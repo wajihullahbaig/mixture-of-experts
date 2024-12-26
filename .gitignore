@@ -16,9 +16,6 @@ htmlcov/
 # Model checkpoints
 *.pt
 
-# Dataset files
-alice-wonderland.txt
-
 # Documentation and plots
 *.pdf
 
