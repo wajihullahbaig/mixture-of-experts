@@ -39,4 +39,4 @@ A simple design for MOE on Mnist data
     ```
     python main.py
     ```
->>>>>>> d4eb6ff (first commit)
+
