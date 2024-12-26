@@ -33,11 +33,14 @@ class Expert(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, output_size: int, dropout_rate: float = 0.3):
         super(Expert, self).__init__()
         self.network = nn.Sequential(
+            nn.BatchNorm1d(input_size),
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
+            nn.BatchNorm1d(hidden_size),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
+            nn.BatchNorm1d(hidden_size // 2),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_size // 2, output_size)
         )
@@ -50,11 +53,14 @@ class GatingNetwork(nn.Module):
     def __init__(self, input_size: int, num_experts: int, hidden_size: int, dropout_rate: float = 0.3):
         super(GatingNetwork, self).__init__()
         self.network = nn.Sequential(
+            nn.BatchNorm1d(input_size),
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
+            nn.BatchNorm1d(hidden_size),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
+            nn.BatchNorm1d(hidden_size // 2),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_size // 2, num_experts)
         )
@@ -256,12 +262,13 @@ class ExpertActivationTracker:
         self.metrics[f'{self.mode}_acc'].append((epoch, accuracy))
         self.metrics['expert_usage'].append((epoch, expert_usage))
         
+        # Fix: Create DataFrame with proper structure
         metrics_df = pd.DataFrame({
-            'epoch': epoch,
-            'loss': loss,
-            'accuracy': accuracy,
-            'expert_usage': str(expert_usage)
-        }, index=[0])
+            'epoch': [epoch],
+            'loss': [loss],
+            'accuracy': [accuracy],
+            'expert_usage': [str(expert_usage.tolist())]  # Convert numpy array to string
+        })
         
         metrics_path = os.path.join(self.data_dir, f'{self.mode}_metrics.csv')
         if os.path.exists(metrics_path):
@@ -303,24 +310,59 @@ class ExpertActivationTracker:
             )
         )
         
-        # Calculate and save additional metrics
-        metrics = {
-            'accuracy': np.trace(cm) / np.sum(cm),
-            'per_class_accuracy': np.diag(cm) / np.sum(cm, axis=1),
-            'per_class_precision': np.diag(cm) / np.sum(cm, axis=0)
-        }
+        # Calculate metrics
+        accuracy = np.trace(cm) / np.sum(cm)
+        per_class_accuracy = np.diag(cm) / np.sum(cm, axis=1)
+        per_class_precision = np.diag(cm) / np.sum(cm, axis=0)
         
-        # Add classification report
+        # Get classification report
         report = classification_report(y_true, y_pred, output_dict=True)
-        metrics['classification_report'] = report
         
-        metrics_df = pd.DataFrame(metrics)
-        metrics_df.to_csv(
+        # Create separate DataFrames for different metrics
+        basic_metrics_df = pd.DataFrame({
+            'metric': ['accuracy'],
+            'value': [accuracy]
+        })
+        
+        per_class_metrics_df = pd.DataFrame({
+            'class': range(len(per_class_accuracy)),
+            'accuracy': per_class_accuracy,
+            'precision': per_class_precision
+        })
+        
+        # Save metrics separately
+        basic_metrics_df.to_csv(
             os.path.join(
                 self.data_dir,
-                f'confusion_matrix_metrics_epoch_{epoch}.csv'
+                f'basic_metrics_epoch_{epoch}.csv'
+            ),
+            index=False
+        )
+        
+        per_class_metrics_df.to_csv(
+            os.path.join(
+                self.data_dir,
+                f'per_class_metrics_epoch_{epoch}.csv'
+            ),
+            index=False
+        )
+        
+        # Save classification report separately
+        report_df = pd.DataFrame(report).transpose()
+        report_df.to_csv(
+            os.path.join(
+                self.data_dir,
+                f'classification_report_epoch_{epoch}.csv'
             )
         )
+        
+        # Return metrics as dictionary for use in training loop
+        metrics = {
+            'accuracy': accuracy,
+            'per_class_accuracy': per_class_accuracy,
+            'per_class_precision': per_class_precision,
+            'classification_report': report
+        }
         
         return cm, metrics
 
@@ -375,7 +417,7 @@ def train_epoch(model: nn.Module,
         all_labels.extend(target.cpu().numpy())
         all_expert_weights.append(expert_weights.cpu())
         
-        if batch_idx % 100 == 0:
+        if batch_idx % 200 == 0:
             tracker.save_expert_activations(
                 expert_weights,
                 target,
@@ -394,7 +436,6 @@ def train_epoch(model: nn.Module,
     # Calculate average expert usage
     all_expert_weights = torch.cat(all_expert_weights, dim=0)
     expert_usage = all_expert_weights.mean(dim=0).squeeze().detach().cpu().numpy()
-
     
     # Generate and save confusion matrix
     cm, cm_metrics = tracker.save_confusion_matrix(
@@ -494,7 +535,7 @@ def main():
     output_size = 10  # 10 digits
     num_experts = 5
     learning_rate = 0.001
-    num_epochs = 10
+    num_epochs = 50
     batch_size = 256
     
     # Setup device

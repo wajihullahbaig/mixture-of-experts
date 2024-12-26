@@ -32,47 +32,74 @@ def set_seed(seed: Optional[int] = 42) -> None:
 
 class GuidedExpert(nn.Module):
     """
-    Individual expert network with assigned labels
+    Improved expert network with better normalization and architecture
     """
     def __init__(self, input_size, hidden_size, output_size, assigned_labels):
         super(GuidedExpert, self).__init__()
         self.assigned_labels = assigned_labels
+        
+        # Add batch normalization and better layer sizing
         self.network = nn.Sequential(
+            nn.BatchNorm1d(input_size),
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.BatchNorm1d(hidden_size),
+            nn.Dropout(0.01),
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.BatchNorm1d(hidden_size // 2),
+            nn.Dropout(0.01),
             nn.Linear(hidden_size // 2, output_size)
         )
+        
+        # Initialize weights using Xavier/Glorot initialization
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.constant_(m.bias, 0)
     
     def forward(self, x):
         return self.network(x)
 
 class GuidedGatingNetwork(nn.Module):
     """
-    Gating network that uses label assignments to guide expert selection
+    Improved gating network with better regularization and temperature scaling
     """
     def __init__(self, input_size, num_experts, hidden_size, expert_label_map):
         super(GuidedGatingNetwork, self).__init__()
         self.expert_label_map = expert_label_map
+        
+        # Add batch normalization and adjusted architecture
         self.network = nn.Sequential(
+            nn.BatchNorm1d(input_size),
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.BatchNorm1d(hidden_size),
+            nn.Dropout(0.01),
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.BatchNorm1d(hidden_size // 2),
+            nn.Dropout(0.01),
             nn.Linear(hidden_size // 2, num_experts)
         )
+        
+        # Learnable temperature with constraint
         self.temperature = nn.Parameter(torch.ones(1) * 1.0)
+        
+        # Initialize weights
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.constant_(m.bias, 0)
     
     def forward(self, x, labels=None):
         logits = self.network(x)
         
+        # Get temperature with minimum bound to prevent division by very small numbers
+        #temperature = torch.exp(self.log_temperature).clamp(min=0.1)
+        
         if self.training and labels is not None:
-            # During training, create a mask based on label assignments
+            # Create expert mask based on label assignments
             batch_size = labels.size(0)
             expert_mask = torch.zeros((batch_size, len(self.expert_label_map)), 
                                    device=labels.device)
@@ -82,38 +109,46 @@ class GuidedGatingNetwork(nn.Module):
                     if label.item() in assigned_labels:
                         expert_mask[i, expert_idx] = 1.0
             
+            # Add small epsilon to prevent zero probabilities
+            expert_mask = expert_mask + 1e-6
+            
             # Apply mask and temperature scaling
             masked_logits = logits * expert_mask
             scaled_logits = masked_logits / self.temperature
-            return F.softmax(scaled_logits, dim=-1)
+            
+            # Add label smoothing to prevent overconfident predictions
+            smoothed_probs = F.softmax(scaled_logits, dim=-1)
+            smoothed_probs = smoothed_probs * 0.9 + 0.1 / len(self.expert_label_map)
+            
+            return smoothed_probs
         else:
-            # During inference, use normal softmax
+            # During inference, use normal softmax with temperature
             scaled_logits = logits / self.temperature
             return F.softmax(scaled_logits, dim=-1)
 
 class GuidedMixtureOfExperts(nn.Module):
     """
-    Guided Mixture of Experts model with label assignments
+    Simplified Guided Mixture of Experts model with basic loss handling
     """
     def __init__(self, input_size, hidden_size, output_size, num_experts, expert_label_assignments):
         super(GuidedMixtureOfExperts, self).__init__()
         self.num_experts = num_experts
         self.expert_label_assignments = expert_label_assignments
         
-        # Initialize experts with their assigned labels
+        # Initialize experts
         self.experts = nn.ModuleList([
             GuidedExpert(input_size, hidden_size, output_size, assigned_labels) 
             for assigned_labels in expert_label_assignments.values()
         ])
         
-        # Initialize guided gating network
+        # Initialize gating network
         self.gating_network = GuidedGatingNetwork(
             input_size, 
             num_experts, 
             hidden_size,
             expert_label_assignments
         )
-        
+    
     def forward(self, x, labels=None):
         # Get expert weights from gating network
         expert_weights = self.gating_network(x, labels)
@@ -125,12 +160,20 @@ class GuidedMixtureOfExperts(nn.Module):
         expert_outputs = expert_outputs.permute(1, 0, 2)
         expert_weights = expert_weights.unsqueeze(-1)
         
+        # Add small epsilon to prevent numerical instability
+        expert_weights = expert_weights + 1e-6
+        expert_weights = expert_weights / expert_weights.sum(dim=1, keepdim=True)
+        
         final_output = torch.bmm(
             expert_outputs.transpose(1, 2),
             expert_weights
         ).squeeze(-1)
         
         return final_output, expert_weights
+    
+    def compute_loss(self, final_output, target):
+        # Simple classification loss using cross entropy
+        return F.cross_entropy(final_output, target)
 
 class ExpertActivationTracker:
     """
@@ -449,7 +492,9 @@ def create_label_assignments(num_classes, num_experts, labels_per_expert):
     return assignments
 
 def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
-    """Train for one epoch"""
+    """
+    Simplified training loop for one epoch
+    """
     model.train()
     total_loss = 0
     correct = 0
@@ -464,15 +509,23 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
         data = data.view(data.size(0), -1)
         
         optimizer.zero_grad()
-        output, expert_weights = model(data, target)  # Pass labels for guided training
         
-        loss = F.cross_entropy(output, target)
+        # Forward pass
+        final_output, expert_weights = model(data, target)
+        
+        # Compute simplified loss
+        loss = model.compute_loss(final_output, target)
+        
+        # Backward pass with gradient clipping
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
+        # Accumulate loss
         total_loss += loss.item()
         
-        pred = output.argmax(dim=1)
+        # Calculate accuracy
+        pred = final_output.argmax(dim=1)
         correct += pred.eq(target).sum().item()
         total += target.size(0)
         
@@ -480,26 +533,26 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
         all_preds.extend(pred.cpu().numpy())
         all_labels.extend(target.cpu().numpy())
         
-        # Save activations periodically
-        if batch_idx % 100 == 0:
+        # Save activations and expert usage periodically
+        if batch_idx % 200 == 0:
             tracker.save_expert_activations(
                 expert_weights,
                 target,
                 epoch,
                 batch_idx
             )
-        
-        # Update progress bar
-        progress_bar.set_postfix({
-            'loss': f'{total_loss/(batch_idx+1):.3f}',
-            'acc': f'{100.*correct/total:.2f}%'
-        })
+            
+            # Update progress bar with metrics
+            progress_bar.set_postfix({
+                'loss': f'{total_loss/(batch_idx+1):.3f}',
+                'acc': f'{100.*correct/total:.2f}%'
+            })
     
     # Calculate epoch metrics
     epoch_loss = total_loss / len(train_loader)
     epoch_acc = 100. * correct / total
     
-    # Calculate expert usage
+    # Calculate final expert usage for the epoch
     expert_usage = expert_weights.mean(dim=0).squeeze().detach().cpu().numpy()
     
     # Generate and save confusion matrix
@@ -507,8 +560,8 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
         np.array(all_labels),
         np.array(all_preds),
         epoch
-    )
-    
+    )       
+
     return epoch_loss, epoch_acc, expert_usage, cm_metrics
 
 def print_dataset_info(train_loader):
@@ -526,8 +579,10 @@ def print_dataset_info(train_loader):
     print(f"Number of classes: {len(set(train_loader.dataset.targets.numpy()))}")
     print("=" * 50)
 
-def test_epoch(model, test_loader, device, tracker, epoch):
-    """Test the model for one epoch"""
+def test_epoch(model, val_loader, device, tracker, epoch):
+    """
+    Simplified validation loop
+    """
     model.eval()
     total_loss = 0
     correct = 0
@@ -535,23 +590,28 @@ def test_epoch(model, test_loader, device, tracker, epoch):
     all_preds = []
     all_labels = []
     
-    progress_bar = tqdm(test_loader, desc=f'Testing Epoch {epoch}')
-    
     with torch.no_grad():
+        progress_bar = tqdm(val_loader, desc=f'Validation Epoch {epoch}')
+        
         for batch_idx, (data, target) in enumerate(progress_bar):
             data, target = data.to(device), target.to(device)
             data = data.view(data.size(0), -1)
             
-            output, expert_weights = model(data)  # No labels needed for inference
+            # Forward pass
+            final_output, expert_weights = model(data)
             
-            loss = F.cross_entropy(output, target)
+            # Compute loss
+            loss = model.compute_loss(final_output, target)
+            
+            # Accumulate loss
             total_loss += loss.item()
             
-            pred = output.argmax(dim=1)
+            # Calculate accuracy
+            pred = final_output.argmax(dim=1)
             correct += pred.eq(target).sum().item()
             total += target.size(0)
             
-            # Store predictions and labels for confusion matrix
+            # Store predictions and labels
             all_preds.extend(pred.cpu().numpy())
             all_labels.extend(target.cpu().numpy())
             
@@ -571,7 +631,7 @@ def test_epoch(model, test_loader, device, tracker, epoch):
             })
     
     # Calculate epoch metrics
-    epoch_loss = total_loss / len(test_loader)
+    epoch_loss = total_loss / len(val_loader)
     epoch_acc = 100. * correct / total
     
     # Calculate expert usage
@@ -597,8 +657,8 @@ def main():
     num_experts = 5   # Using 5 experts
     labels_per_expert = 2  # Each expert handles 2 consecutive digits
     learning_rate = 0.001
-    num_epochs = 1
-    batch_size = 64
+    num_epochs = 100
+    batch_size = 256
     
     # Create label assignments
     expert_label_assignments = create_label_assignments(
@@ -614,8 +674,7 @@ def main():
     print("=" * 50)
     
     # Setup device
-    #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"\nUsing device: {device}")
     
     # Load MNIST dataset
