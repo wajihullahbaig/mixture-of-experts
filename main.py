@@ -1,3 +1,5 @@
+import random
+from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,6 +14,7 @@ import os
 import json
 from tqdm import tqdm
 import numpy as np
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 class Expert(nn.Module):
     """
@@ -100,7 +103,7 @@ class ExpertActivationTracker:
         
         self.base_dir = os.path.join(base_path, self.timestamp)
         self.plots_dir = os.path.join(self.base_dir, 'plots')
-        self.data_dir = os.path.join(self.base_dir, 'data')
+        self.data_dir = os.path.join(self.base_dir, 'csv')
         self.model_dir = os.path.join(self.base_dir, 'models')
         
         # Create directories
@@ -260,6 +263,71 @@ class ExpertActivationTracker:
         else:
             metrics_df.to_csv(metrics_path, index=False)
     
+    def save_confusion_matrix(self, y_true, y_pred, epoch):
+        """
+        Generate and save confusion matrix plot
+        
+        Args:
+            y_true: True labels
+            y_pred: Predicted labels
+            epoch: Current epoch number
+        """
+        # Convert tensors to numpy arrays if needed
+        if torch.is_tensor(y_true):
+            y_true = y_true.cpu().numpy()
+        if torch.is_tensor(y_pred):
+            y_pred = y_pred.cpu().numpy()
+            
+        # Compute confusion matrix
+        cm = confusion_matrix(y_true, y_pred)
+        
+        # Create figure and plot
+        plt.figure(figsize=(10, 8))
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+        disp.plot(cmap='Blues')
+        
+        plt.title(f'Confusion Matrix - Epoch {epoch}')
+        plt.tight_layout()
+        
+        # Save to disk
+        plt.savefig(
+            os.path.join(
+                self.plots_dir,
+                f'confusion_matrix_epoch_{epoch}.png'
+            )
+        )
+        plt.close()
+        
+        # Save raw confusion matrix data
+        cm_df = pd.DataFrame(
+            cm,
+            index=[f'True_{i}' for i in range(cm.shape[0])],
+            columns=[f'Pred_{i}' for i in range(cm.shape[1])]
+        )
+        cm_df.to_csv(
+            os.path.join(
+                self.data_dir,
+                f'confusion_matrix_epoch_{epoch}.csv'
+            )
+        )
+        
+        # Calculate and save additional metrics
+        metrics = {
+            'accuracy': np.trace(cm) / np.sum(cm),
+            'per_class_accuracy': np.diag(cm) / np.sum(cm, axis=1),
+            'per_class_precision': np.diag(cm) / np.sum(cm, axis=0)
+        }
+        
+        metrics_df = pd.DataFrame(metrics)
+        metrics_df.to_csv(
+            os.path.join(
+                self.data_dir,
+                f'confusion_matrix_metrics_epoch_{epoch}.csv'
+            )
+        )
+        
+        return cm, metrics
+
     def save_model(self, model, optimizer, epoch, loss):
         """
         Save model checkpoint
@@ -278,13 +346,15 @@ class ExpertActivationTracker:
 
 def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
     """
-    Train for one epoch
+    Train for one epoch and track metrics including confusion matrix
     """
     model.train()
     total_loss = 0
     correct = 0
     total = 0
-    
+    all_preds = []
+    all_labels = []
+
     progress_bar = tqdm(train_loader, desc=f'Epoch {epoch}')
     
     for batch_idx, (data, target) in enumerate(progress_bar):
@@ -306,6 +376,10 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
         pred = output.argmax(dim=1)
         correct += pred.eq(target).sum().item()
         total += target.size(0)
+        
+        # Store predictions and labels for confusion matrix
+        all_preds.extend(pred.cpu().numpy())
+        all_labels.extend(target.cpu().numpy())
         
         # Save activations periodically
         if batch_idx % 100 == 0:
@@ -329,7 +403,39 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
     # Calculate expert usage
     expert_usage = expert_weights.mean(dim=0).squeeze().detach().cpu().numpy()
     
-    return epoch_loss, epoch_acc, expert_usage
+    # Generate and save confusion matrix
+    cm, cm_metrics = tracker.save_confusion_matrix(
+        np.array(all_labels),
+        np.array(all_preds),
+        epoch
+    )
+    
+    return epoch_loss, epoch_acc, expert_usage, cm_metrics
+
+def set_seed(seed: Optional[int] = 42) -> None:
+    """
+    Set all random seeds for reproducibility.
+    
+    Args:
+        seed: Integer seed for reproducibility. If None, seeds are not set.
+    """
+    if seed is not None:
+        # Python random
+        random.seed(seed)
+        
+        # Numpy
+        np.random.seed(seed)
+        
+        # PyTorch
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        
+        # Set CUDA backend to deterministic mode
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        
+        # Set Python hash seed
+        os.environ['PYTHONHASHSEED'] = str(seed)
 
 def main():
     # Hyperparameters
@@ -339,11 +445,10 @@ def main():
     num_experts = 4
     learning_rate = 0.001
     num_epochs = 10
-    batch_size = 64
+    batch_size = 256
     
     # Setup device
-    #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
     # Load MNIST dataset
@@ -380,7 +485,7 @@ def main():
     
     # Training loop
     for epoch in range(num_epochs):
-        loss, accuracy, expert_usage = train_epoch(
+        loss, accuracy, expert_usage, cm_metrics = train_epoch(
             model,
             train_loader,
             optimizer,
@@ -399,6 +504,8 @@ def main():
         print(f'Average Loss: {loss:.4f}')
         print(f'Accuracy: {accuracy:.2f}%')
         print('Expert Usage:', expert_usage)
+        print('Per-class Accuracy:', cm_metrics['per_class_accuracy'])
+        print('Per-class Precision:', cm_metrics['per_class_precision'])
 
 if __name__ == '__main__':
-    main()
+    main()    
