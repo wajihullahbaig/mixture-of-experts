@@ -18,6 +18,8 @@ A simple design for MOE on Mnist data
   - `plots`: MOE activation outputs on epoch and batch number for a deeper understanding 
   - `data`: MOE activation activate as a CSV output
 
+## Activation of MOE
+![Gattin Network Activation](Gatting-Network-Decision.drawio.png)
 
 ## Setup Instructions
 
