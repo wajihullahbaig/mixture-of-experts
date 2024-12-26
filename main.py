@@ -1,5 +1,5 @@
 import random
-from typing import Optional
+from typing import Optional, Tuple, Dict, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,54 +14,60 @@ import os
 import json
 from tqdm import tqdm
 import numpy as np
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
+from torchinfo import summary
+
+def set_seed(seed: Optional[int] = 42) -> None:
+    """Set all random seeds for reproducibility."""
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        os.environ['PYTHONHASHSEED'] = str(seed)
 
 class Expert(nn.Module):
-    """
-    Individual expert network
-    """
-    def __init__(self, input_size, hidden_size, output_size):
+    """Individual expert network"""
+    def __init__(self, input_size: int, hidden_size: int, output_size: int, dropout_rate: float = 0.3):
         super(Expert, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_size // 2, output_size)
         )
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.network(x)
 
 class GatingNetwork(nn.Module):
-    """
-    Gating network that determines expert activation weights
-    """
-    def __init__(self, input_size, num_experts, hidden_size):
+    """Gating network that determines expert activation weights"""
+    def __init__(self, input_size: int, num_experts: int, hidden_size: int, dropout_rate: float = 0.3):
         super(GatingNetwork, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_size // 2, num_experts)
         )
         self.temperature = nn.Parameter(torch.ones(1) * 1.0)
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         logits = self.network(x)
         scaled_logits = logits / self.temperature
         return F.softmax(scaled_logits, dim=-1)
 
 class MixtureOfExperts(nn.Module):
-    """
-    Complete Mixture of Experts model
-    """
-    def __init__(self, input_size, hidden_size, output_size, num_experts):
+    """Complete Mixture of Experts model"""
+    def __init__(self, input_size: int, hidden_size: int, output_size: int, num_experts: int):
         super(MixtureOfExperts, self).__init__()
         self.num_experts = num_experts
         
@@ -74,7 +80,7 @@ class MixtureOfExperts(nn.Module):
         # Initialize gating network
         self.gating_network = GatingNetwork(input_size, num_experts, hidden_size)
         
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Get expert weights from gating network
         expert_weights = self.gating_network(x)
         
@@ -93,13 +99,12 @@ class MixtureOfExperts(nn.Module):
         return final_output, expert_weights
 
 class ExpertActivationTracker:
-    """
-    Tracks and saves expert activation patterns
-    """
-    def __init__(self, base_path=None, num_experts=None):
+    """Tracks and saves expert activation patterns"""
+    def __init__(self, mode: str, base_path: Optional[str] = None, num_experts: Optional[int] = None):
+        self.mode = mode
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         if base_path is None:
-            base_path = 'moe_outputs'
+            base_path = f'moe_outputs/{mode}'
         
         self.base_dir = os.path.join(base_path, self.timestamp)
         self.plots_dir = os.path.join(self.base_dir, 'plots')
@@ -112,6 +117,7 @@ class ExpertActivationTracker:
         
         self.num_experts = num_experts
         self.config = {
+            'mode': mode,
             'created_at': self.timestamp,
             'base_dir': self.base_dir,
             'num_experts': num_experts
@@ -123,15 +129,16 @@ class ExpertActivationTracker:
         
         # Initialize metrics tracking
         self.metrics = {
-            'train_loss': [],
-            'train_acc': [],
+            f'{mode}_loss': [],
+            f'{mode}_acc': [],
             'expert_usage': []
         }
     
-    def save_expert_activations(self, expert_weights, labels, epoch, batch_idx):
-        """
-        Save and visualize expert activations
-        """
+    def save_expert_activations(self, expert_weights: torch.Tensor, 
+                              labels: torch.Tensor, 
+                              epoch: int, 
+                              batch_idx: int) -> pd.DataFrame:
+        """Save and visualize expert activations"""
         probs_np = expert_weights.squeeze(-1).detach().cpu().numpy()
         labels_np = labels.cpu().numpy()
         
@@ -163,8 +170,9 @@ class ExpertActivationTracker:
         self._create_label_distribution_plot(df, epoch, batch_idx)
         
         return df
-    
-    def _create_activation_heatmap(self, df, epoch, batch_idx):
+
+    def _create_activation_heatmap(self, df: pd.DataFrame, epoch: int, batch_idx: int):
+        """Create and save activation heatmap"""
         plt.figure(figsize=(12, 8))
         pivot_df = df.pivot(
             index='Sample',
@@ -179,7 +187,7 @@ class ExpertActivationTracker:
             cmap='YlOrRd'
         )
         
-        plt.title(f'Expert Activation Heatmap (Epoch {epoch}, Batch {batch_idx})')
+        plt.title(f'{self.mode} Expert Activation Heatmap (Epoch {epoch}, Batch {batch_idx})')
         plt.tight_layout()
         plt.savefig(
             os.path.join(
@@ -188,8 +196,9 @@ class ExpertActivationTracker:
             )
         )
         plt.close()
-    
-    def _create_expert_usage_plot(self, df, epoch, batch_idx):
+
+    def _create_expert_usage_plot(self, df: pd.DataFrame, epoch: int, batch_idx: int):
+        """Create and save expert usage plot"""
         plt.figure(figsize=(10, 6))
         mean_activations = df.groupby('Expert')['Probability'].mean()
         
@@ -199,7 +208,7 @@ class ExpertActivationTracker:
             palette='viridis'
         )
         
-        plt.title(f'Mean Expert Usage (Epoch {epoch}, Batch {batch_idx})')
+        plt.title(f'{self.mode} Mean Expert Usage (Epoch {epoch}, Batch {batch_idx})')
         plt.xlabel('Expert')
         plt.ylabel('Mean Activation Probability')
         plt.tight_layout()
@@ -210,11 +219,11 @@ class ExpertActivationTracker:
             )
         )
         plt.close()
-    
-    def _create_label_distribution_plot(self, df, epoch, batch_idx):
+
+    def _create_label_distribution_plot(self, df: pd.DataFrame, epoch: int, batch_idx: int):
+        """Create and save label distribution plot"""
         plt.figure(figsize=(12, 6))
         
-        # Calculate mean expert activation per label
         pivot_df = df.pivot_table(
             index='Label',
             columns='Expert',
@@ -229,7 +238,7 @@ class ExpertActivationTracker:
             cmap='YlOrRd'
         )
         
-        plt.title(f'Expert Specialization by Label (Epoch {epoch}, Batch {batch_idx})')
+        plt.title(f'{self.mode} Expert Specialization by Label (Epoch {epoch}, Batch {batch_idx})')
         plt.xlabel('Expert')
         plt.ylabel('Label')
         plt.tight_layout()
@@ -240,16 +249,13 @@ class ExpertActivationTracker:
             )
         )
         plt.close()
-    
-    def update_metrics(self, epoch, loss, accuracy, expert_usage):
-        """
-        Update training metrics
-        """
-        self.metrics['train_loss'].append((epoch, loss))
-        self.metrics['train_acc'].append((epoch, accuracy))
+
+    def update_metrics(self, epoch: int, loss: float, accuracy: float, expert_usage: np.ndarray):
+        """Update and save training metrics"""
+        self.metrics[f'{self.mode}_loss'].append((epoch, loss))
+        self.metrics[f'{self.mode}_acc'].append((epoch, accuracy))
         self.metrics['expert_usage'].append((epoch, expert_usage))
         
-        # Save metrics
         metrics_df = pd.DataFrame({
             'epoch': epoch,
             'loss': loss,
@@ -257,27 +263,14 @@ class ExpertActivationTracker:
             'expert_usage': str(expert_usage)
         }, index=[0])
         
-        metrics_path = os.path.join(self.data_dir, 'training_metrics.csv')
+        metrics_path = os.path.join(self.data_dir, f'{self.mode}_metrics.csv')
         if os.path.exists(metrics_path):
             metrics_df.to_csv(metrics_path, mode='a', header=False, index=False)
         else:
             metrics_df.to_csv(metrics_path, index=False)
-    
-    def save_confusion_matrix(self, y_true, y_pred, epoch):
-        """
-        Generate and save confusion matrix plot
-        
-        Args:
-            y_true: True labels
-            y_pred: Predicted labels
-            epoch: Current epoch number
-        """
-        # Convert tensors to numpy arrays if needed
-        if torch.is_tensor(y_true):
-            y_true = y_true.cpu().numpy()
-        if torch.is_tensor(y_pred):
-            y_pred = y_pred.cpu().numpy()
-            
+
+    def save_confusion_matrix(self, y_true: np.ndarray, y_pred: np.ndarray, epoch: int) -> Tuple[np.ndarray, Dict]:
+        """Generate and save confusion matrix plot and metrics"""
         # Compute confusion matrix
         cm = confusion_matrix(y_true, y_pred)
         
@@ -286,10 +279,9 @@ class ExpertActivationTracker:
         disp = ConfusionMatrixDisplay(confusion_matrix=cm)
         disp.plot(cmap='Blues')
         
-        plt.title(f'Confusion Matrix - Epoch {epoch}')
+        plt.title(f'{self.mode} Confusion Matrix - Epoch {epoch}')
         plt.tight_layout()
         
-        # Save to disk
         plt.savefig(
             os.path.join(
                 self.plots_dir,
@@ -318,6 +310,10 @@ class ExpertActivationTracker:
             'per_class_precision': np.diag(cm) / np.sum(cm, axis=0)
         }
         
+        # Add classification report
+        report = classification_report(y_true, y_pred, output_dict=True)
+        metrics['classification_report'] = report
+        
         metrics_df = pd.DataFrame(metrics)
         metrics_df.to_csv(
             os.path.join(
@@ -328,10 +324,8 @@ class ExpertActivationTracker:
         
         return cm, metrics
 
-    def save_model(self, model, optimizer, epoch, loss):
-        """
-        Save model checkpoint
-        """
+    def save_model(self, model: nn.Module, optimizer: optim.Optimizer, epoch: int, loss: float):
+        """Save model checkpoint"""
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
@@ -344,23 +338,25 @@ class ExpertActivationTracker:
             os.path.join(self.model_dir, f'checkpoint_epoch_{epoch}.pt')
         )
 
-def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
-    """
-    Train for one epoch and track metrics including confusion matrix
-    """
+def train_epoch(model: nn.Module, 
+                train_loader: DataLoader, 
+                optimizer: optim.Optimizer, 
+                device: torch.device,
+                tracker: ExpertActivationTracker, 
+                epoch: int) -> Tuple[float, float, np.ndarray, Dict]:
+    """Train for one epoch and track metrics"""
     model.train()
     total_loss = 0
     correct = 0
     total = 0
     all_preds = []
     all_labels = []
-
-    progress_bar = tqdm(train_loader, desc=f'Epoch {epoch}')
+    all_expert_weights = []
+    
+    progress_bar = tqdm(train_loader, desc=f'Training Epoch {epoch}')
     
     for batch_idx, (data, target) in enumerate(progress_bar):
         data, target = data.to(device), target.to(device)
-        
-        # Flatten images for MLP
         data = data.view(data.size(0), -1)
         
         optimizer.zero_grad()
@@ -371,17 +367,14 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
         optimizer.step()
         
         total_loss += loss.item()
-        
-        # Calculate accuracy
         pred = output.argmax(dim=1)
         correct += pred.eq(target).sum().item()
         total += target.size(0)
         
-        # Store predictions and labels for confusion matrix
         all_preds.extend(pred.cpu().numpy())
         all_labels.extend(target.cpu().numpy())
+        all_expert_weights.append(expert_weights.cpu())
         
-        # Save activations periodically
         if batch_idx % 100 == 0:
             tracker.save_expert_activations(
                 expert_weights,
@@ -390,18 +383,18 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
                 batch_idx
             )
         
-        # Update progress bar
         progress_bar.set_postfix({
             'loss': f'{total_loss/(batch_idx+1):.3f}',
             'acc': f'{100.*correct/total:.2f}%'
         })
     
-    # Calculate epoch metrics
     epoch_loss = total_loss / len(train_loader)
     epoch_acc = 100. * correct / total
     
-    # Calculate expert usage
-    expert_usage = expert_weights.mean(dim=0).squeeze().detach().cpu().numpy()
+    # Calculate average expert usage
+    all_expert_weights = torch.cat(all_expert_weights, dim=0)
+    expert_usage = all_expert_weights.mean(dim=0).squeeze().detach().cpu().numpy()
+
     
     # Generate and save confusion matrix
     cm, cm_metrics = tracker.save_confusion_matrix(
@@ -412,37 +405,94 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
     
     return epoch_loss, epoch_acc, expert_usage, cm_metrics
 
-def set_seed(seed: Optional[int] = 42) -> None:
+def evaluate_model(model: nn.Module, 
+                  test_loader: DataLoader, 
+                  device: torch.device,
+                  tracker: ExpertActivationTracker,
+                  epoch: int) -> Tuple[float, float, np.ndarray, Dict]:
     """
-    Set all random seeds for reproducibility.
+    Evaluate model on test set
+    """
+    model.eval()
+    total_loss = 0
+    correct = 0
+    total = 0
+    all_preds = []
+    all_labels = []
+    all_expert_weights = []
     
-    Args:
-        seed: Integer seed for reproducibility. If None, seeds are not set.
-    """
-    if seed is not None:
-        # Python random
-        random.seed(seed)
+    with torch.no_grad():
+        progress_bar = tqdm(test_loader, desc=f'Evaluating Epoch {epoch}')
         
-        # Numpy
-        np.random.seed(seed)
-        
-        # PyTorch
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        
-        # Set CUDA backend to deterministic mode
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        
-        # Set Python hash seed
-        os.environ['PYTHONHASHSEED'] = str(seed)
+        for batch_idx, (data, target) in enumerate(progress_bar):
+            data, target = data.to(device), target.to(device)
+            data = data.view(data.size(0), -1)
+            
+            output, expert_weights = model(data)
+            loss = F.cross_entropy(output, target)
+            
+            total_loss += loss.item()
+            pred = output.argmax(dim=1)
+            correct += pred.eq(target).sum().item()
+            total += target.size(0)
+            
+            all_preds.extend(pred.cpu().numpy())
+            all_labels.extend(target.cpu().numpy())
+            all_expert_weights.append(expert_weights.cpu())
+            
+            if batch_idx % 100 == 0:
+                tracker.save_expert_activations(
+                    expert_weights,
+                    target,
+                    epoch,
+                    batch_idx
+                )
+            
+            progress_bar.set_postfix({
+                'loss': f'{total_loss/(batch_idx+1):.3f}',
+                'acc': f'{100.*correct/total:.2f}%'
+            })
+    
+    epoch_loss = total_loss / len(test_loader)
+    epoch_acc = 100. * correct / total
+    
+    # Calculate average expert usage
+    all_expert_weights = torch.cat(all_expert_weights, dim=0)
+    expert_usage = all_expert_weights.mean(dim=0).squeeze().numpy()
+    
+    # Generate and save confusion matrix
+    cm, cm_metrics = tracker.save_confusion_matrix(
+        np.array(all_labels),
+        np.array(all_preds),
+        epoch
+    )
+    
+    return epoch_loss, epoch_acc, expert_usage, cm_metrics
+
+def print_dataset_info(data_loader: DataLoader, dataset_type: str):
+    """Print information about the dataset"""
+    total_samples = len(data_loader.dataset)
+    batch_size = data_loader.batch_size
+    num_batches = len(data_loader)
+    
+    print(f"\n{dataset_type} Dataset Information:")
+    print("=" * 50)
+    print(f"Total number of samples: {total_samples:,}")
+    print(f"Batch size: {batch_size}")
+    print(f"Number of batches: {num_batches}")
+    print(f"Input shape: {data_loader.dataset[0][0].shape}")
+    print(f"Number of classes: {len(set(data_loader.dataset.targets.numpy()))}")
+    print("=" * 50)
 
 def main():
+    # Set random seed for reproducibility
+    set_seed(42)
+    
     # Hyperparameters
     input_size = 784  # 28x28 MNIST images
     hidden_size = 256
     output_size = 10  # 10 digits
-    num_experts = 4
+    num_experts = 5
     learning_rate = 0.001
     num_epochs = 10
     batch_size = 256
@@ -464,10 +514,23 @@ def main():
         transform=transform
     )
     
+    test_dataset = datasets.MNIST(
+        './data',
+        train=False,
+        download=True,
+        transform=transform
+    )
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True
+    )
+    
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False
     )
     
     # Initialize model and optimizer
@@ -480,32 +543,71 @@ def main():
     
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     
-    # Initialize tracker
-    tracker = ExpertActivationTracker(num_experts=num_experts)
+    # Print model summary and dataset info
+    print("\nModel Architecture Summary:")
+    print("=" * 50)
+    summary(model, input_size=(batch_size, input_size))
     
-    # Training loop
+    print("\nDataset Information:")
+    print_dataset_info(train_loader, "Training")
+    print_dataset_info(test_loader, "Test")
+    
+    # Initialize trackers for both train and test
+    train_tracker = ExpertActivationTracker(mode='train', num_experts=num_experts)
+    test_tracker = ExpertActivationTracker(mode='test', num_experts=num_experts)
+    
+    # Training and evaluation loop
+    best_test_acc = 0.0
     for epoch in range(num_epochs):
-        loss, accuracy, expert_usage, cm_metrics = train_epoch(
+        # Training phase
+        train_loss, train_acc, train_expert_usage, train_cm_metrics = train_epoch(
             model,
             train_loader,
             optimizer,
             device,
-            tracker,
+            train_tracker,
             epoch + 1
         )
         
-        # Update and save metrics
-        tracker.update_metrics(epoch + 1, loss, accuracy, expert_usage)
+        # Testing phase
+        test_loss, test_acc, test_expert_usage, test_cm_metrics = evaluate_model(
+            model,
+            test_loader,
+            device,
+            test_tracker,
+            epoch + 1
+        )
         
-        # Save model checkpoint
-        tracker.save_model(model, optimizer, epoch + 1, loss)
+        # Update metrics
+        train_tracker.update_metrics(epoch + 1, train_loss, train_acc, train_expert_usage)
+        test_tracker.update_metrics(epoch + 1, test_loss, test_acc, test_expert_usage)
         
+        # Save model checkpoints
+        train_tracker.save_model(model, optimizer, epoch + 1, train_loss)
+        
+        # Save best model
+        if test_acc > best_test_acc:
+            best_test_acc = test_acc
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'test_acc': test_acc
+            }, os.path.join(test_tracker.model_dir, 'best_model.pt'))
+        
+        # Print epoch results
         print(f'\nEpoch {epoch + 1}:')
-        print(f'Average Loss: {loss:.4f}')
-        print(f'Accuracy: {accuracy:.2f}%')
-        print('Expert Usage:', expert_usage)
-        print('Per-class Accuracy:', cm_metrics['per_class_accuracy'])
-        print('Per-class Precision:', cm_metrics['per_class_precision'])
+        print('Training:')
+        print(f'  Loss: {train_loss:.4f}')
+        print(f'  Accuracy: {train_acc:.2f}%')
+        print(f'  Expert Usage: {train_expert_usage}')
+        print('  Per-class Accuracy:', train_cm_metrics['per_class_accuracy'])
+        print('Test:')
+        print(f'  Loss: {test_loss:.4f}')
+        print(f'  Accuracy: {test_acc:.2f}%')
+        print(f'  Expert Usage: {test_expert_usage}')
+        print('  Per-class Accuracy:', test_cm_metrics['per_class_accuracy'])
+        print(f'  Best Test Accuracy: {best_test_acc:.2f}%')
 
 if __name__ == '__main__':
-    main()    
+    main()
