@@ -1,7 +1,6 @@
-<<<<<<< HEAD
 # mixture-of-experts
 A simple design for MOE on Mnist data
-=======
+=======================================
 # MIXTURE OF EXPERTS on MNIST DATA
 
 ![Mixture of experts architecture](MOE-Arch.drawio.png)
