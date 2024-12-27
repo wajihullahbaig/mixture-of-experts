@@ -21,26 +21,15 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 class BaseExpertTracker:
     """Base class for tracking expert activations and metrics in MoE models
     
-    This class provides functionality to:
-    - Track and save expert activations
-    - Generate and save visualization plots
-    - Track training/testing metrics
-    - Save model checkpoints
-    - Handle both base MoE and guided MoE models
+    Features:
+    - Zero-based expert indexing in visualizations
+    - Consistent expert naming across all plots
+    - Enhanced visualization formatting
     """
     
     def __init__(self, model_type: str, mode: str, base_path: str = None, num_experts: int = None, 
                  expert_label_assignments: dict = None):
-        """
-        Initialize the expert tracker
-        
-        Args:
-            model_type (str): Type of MoE model ('base' or 'guided')
-            mode (str): Training phase ('train' or 'test') 
-            base_path (str, optional): Base directory for outputs
-            num_experts (int, optional): Number of experts in model
-            expert_label_assignments (dict, optional): Dict mapping experts to label assignments (for guided MoE)
-        """
+        """Initialize the expert tracker with zero-based indexing"""
         self.model_type = model_type
         self.mode = mode
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -92,35 +81,23 @@ class BaseExpertTracker:
 
     def save_expert_activations(self, expert_weights: torch.Tensor, labels: torch.Tensor,
                               epoch: int, batch_idx: int) -> pd.DataFrame:
-        """
-        Save and visualize expert activations
-        
-        Args:
-            expert_weights (torch.Tensor): Expert activation weights
-            labels (torch.Tensor): True labels
-            epoch (int): Current epoch
-            batch_idx (int): Current batch index
-            
-        Returns:
-            pd.DataFrame: DataFrame containing activation data
-        """
+        """Save and visualize expert activations with zero-based indexing"""
         probs_np = expert_weights.squeeze(-1).detach().cpu().numpy()
         labels_np = labels.cpu().numpy()
         
-        # Create DataFrame
+        # Create DataFrame with zero-based expert indexing
         activation_data = []
         for sample_idx in range(len(probs_np)):
-            for expert_idx, prob in enumerate(probs_np[sample_idx]):
+            for expert_idx in range(probs_np.shape[1]):
                 data = {
-                    'Sample': f'Sample_{sample_idx + 1}',
-                    'Expert': f'Expert_{expert_idx + 1}',
-                    'Probability': float(prob),
+                    'Sample': f'Sample_{sample_idx}',  # Zero-based sample indexing
+                    'Expert': f'Expert_{expert_idx}',  # Zero-based expert indexing
+                    'Probability': float(probs_np[sample_idx, expert_idx]),
                     'Label': int(labels_np[sample_idx]),
                     'Epoch': epoch,
                     'Batch': batch_idx
                 }
                 
-                # Add label assignment info for guided MoE
                 if self.expert_label_assignments:
                     data['Is_Assigned'] = labels_np[sample_idx] in self.expert_label_assignments[expert_idx]
                     data['Assigned_Labels'] = str(self.expert_label_assignments[expert_idx])
@@ -133,18 +110,28 @@ class BaseExpertTracker:
         csv_path = os.path.join(self.data_dir, f'activations_epoch_{epoch}_batch_{batch_idx}.csv')
         df.to_csv(csv_path, index=False)
         
-        # Create visualizations with proper figure handling
         self._create_activation_plots(df, epoch, batch_idx)
         
         return df
 
+
     def _create_activation_plots(self, df: pd.DataFrame, epoch: int, batch_idx: int):
-        """Create all activation-related plots with proper figure handling"""
+        """Create activation plots with zero-based expert indexing"""
         # Activation heatmap
         fig_heatmap = plt.figure(figsize=(12, 8))
         pivot_df = df.pivot(index='Sample', columns='Expert', values='Probability')
+        
+        # Ensure expert columns are properly ordered
+        expert_cols = [f'Expert_{i}' for i in range(self.num_experts)]
+        pivot_df = pivot_df.reindex(columns=expert_cols)
+        
+        # Create heatmap with modified expert labels
         sns.heatmap(pivot_df, annot=True, fmt='.3f', cmap='YlOrRd')
         plt.title(f'{self.mode} Expert Activation Heatmap (Epoch {epoch}, Batch {batch_idx})')
+        
+        # Customize x-axis labels to show zero-based indexing
+        plt.xticks(np.arange(self.num_experts) + 0.5, [str(i) for i in range(self.num_experts)])
+        
         plt.tight_layout()
         plt.savefig(os.path.join(self.plots_dir, f'heatmap_epoch_{epoch}_batch_{batch_idx}.png'))
         plt.close(fig_heatmap)
@@ -154,14 +141,22 @@ class BaseExpertTracker:
         if self.expert_label_assignments:
             assigned = df[df['Is_Assigned']].groupby('Expert')['Probability'].mean()
             non_assigned = df[~df['Is_Assigned']].groupby('Expert')['Probability'].mean()
-            x = np.arange(len(assigned))
+            
+            # Ensure proper ordering of experts
+            assigned = assigned.reindex([f'Expert_{i}' for i in range(self.num_experts)])
+            non_assigned = non_assigned.reindex([f'Expert_{i}' for i in range(self.num_experts)])
+            
+            x = np.arange(self.num_experts)
             width = 0.35
             plt.bar(x - width/2, assigned, width, label='Assigned Labels')
             plt.bar(x + width/2, non_assigned, width, label='Non-assigned Labels')
             plt.legend()
+            plt.xticks(x, [str(i) for i in range(self.num_experts)])
         else:
             mean_activations = df.groupby('Expert')['Probability'].mean()
-            sns.barplot(x=mean_activations.index, y=mean_activations.values, palette='viridis')
+            mean_activations = mean_activations.reindex([f'Expert_{i}' for i in range(self.num_experts)])
+            plt.bar(range(self.num_experts), mean_activations.values)
+            plt.xticks(range(self.num_experts), [str(i) for i in range(self.num_experts)])
         
         plt.title(f'{self.mode} Expert Usage (Epoch {epoch}, Batch {batch_idx})')
         plt.xlabel('Expert')
@@ -173,16 +168,23 @@ class BaseExpertTracker:
         # Label distribution plot
         fig_dist = plt.figure(figsize=(12, 6))
         pivot_df = df.pivot_table(index='Label', columns='Expert', values='Probability', aggfunc='mean')
+        
+        # Ensure proper ordering of expert columns
+        pivot_df = pivot_df.reindex(columns=[f'Expert_{i}' for i in range(self.num_experts)])
+        
         sns.heatmap(pivot_df, annot=True, fmt='.3f', cmap='YlOrRd')
         plt.title(f'{self.mode} Expert Specialization by Label (Epoch {epoch}, Batch {batch_idx})')
-        plt.xlabel('Expert')
-        plt.ylabel('Label')
+        
+        # Customize x-axis labels
+        plt.xticks(np.arange(self.num_experts) + 0.5, [str(i) for i in range(self.num_experts)])
         
         if self.expert_label_assignments:
             for expert_idx, labels in self.expert_label_assignments.items():
                 plt.text(expert_idx + 0.5, -0.5, f'Assigned: {labels}',
                         ha='center', va='center', rotation=45)
         
+        plt.xlabel('Expert')
+        plt.ylabel('Label')
         plt.tight_layout()
         plt.savefig(os.path.join(self.plots_dir, f'label_distribution_epoch_{epoch}_batch_{batch_idx}.png'))
         plt.close(fig_dist)

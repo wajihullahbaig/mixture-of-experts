@@ -142,37 +142,38 @@ class GuidedGatingNetwork(nn.Module):
     
     def compute_soft_masks(self, labels: Optional[torch.Tensor] = None) -> Optional[torch.Tensor]:
         """
-        Compute soft assignment masks based on label similarities
+        Vectorized computation of soft assignment masks
         
         Args:
-            labels: Ground truth labels (optional)
+            labels: Ground truth labels tensor of shape (batch_size,)
             
         Returns:
-            Soft assignment mask tensor or None if labels not provided
+            Soft assignment mask tensor of shape (batch_size, num_experts)
         """
         if labels is None:
             return None
         
-        # Get label embeddings for the batch
-        batch_embeddings = self.label_embedding[labels]
+        batch_size = labels.size(0)
+        num_experts = len(self.expert_label_map)
+        device = labels.device
         
-        # Compute similarity between labels and expert assignments
-        expert_similarities = []
+        # Create assignment matrix (batch_size, num_experts)
+        # Initialize with small values for non-assigned experts
+        soft_mask = torch.full((batch_size, num_experts), 0.1 / (num_experts - 1), device=device)
+        
+        # Create label-to-expert mapping tensor
+        label_expert_map = torch.zeros(max(max(self.expert_label_map.values())) + 1, num_experts, device=device)
         for expert_idx, assigned_labels in self.expert_label_map.items():
-            # Average embedding for assigned labels
-            expert_embedding = self.label_embedding[torch.tensor(assigned_labels)].mean(0)
-            
-            # Compute cosine similarity
-            similarity = F.cosine_similarity(
-                batch_embeddings,
-                expert_embedding.unsqueeze(0),
-                dim=1
-            )
-            expert_similarities.append(similarity)
+            label_expert_map[torch.tensor(assigned_labels, device=device), expert_idx] = 1
         
-        # Stack similarities and apply softmax with temperature
-        similarities = torch.stack(expert_similarities, dim=1)
-        return F.softmax(similarities / self.routing_temperature, dim=1)
+        # Use index_select to efficiently assign high probabilities
+        # This avoids loops by using tensor operations
+        expert_assignments = label_expert_map[labels]
+        soft_mask = torch.where(expert_assignments == 1, 
+                              torch.tensor(0.9, device=device),
+                              soft_mask)
+        
+        return soft_mask
     
     def forward(self, x: torch.Tensor, labels: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
@@ -279,48 +280,64 @@ class GuidedMixtureOfExperts(nn.Module):
     def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor, 
                     expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor]) -> torch.Tensor:
         """
-        Compute total loss with all components
-        
-        Args:
-            final_output: Model predictions
-            target: Ground truth labels
-            expert_weights: Expert combination weights
-            expert_l2_losses: List of expert L2 regularization losses
-            
-        Returns:
-            Total loss value
+        Vectorized computation of total loss
         """
         # Base classification loss
         ce_loss = F.cross_entropy(final_output, target)
+        
+        # Expert assignment loss - vectorized computation
+        # Create target assignment matrix
+        batch_size = target.size(0)
+        num_experts = len(self.expert_label_assignments)
+        device = target.device
+        
+        # Create label-to-expert mapping tensor
+        label_expert_map = torch.zeros(max(max(self.expert_label_assignments.values())) + 1, 
+                                     num_experts, device=device)
+        for expert_idx, assigned_labels in self.expert_label_assignments.items():
+            label_expert_map[torch.tensor(assigned_labels, device=device), expert_idx] = 1
+        
+        # Get target expert assignments for the batch
+        target_assignments = label_expert_map[target]  # shape: (batch_size, num_experts)
+        
+        # Compute assignment loss using binary cross entropy
+        # We use the mean over both batch and experts dimensions
+        expert_assignment_loss = F.binary_cross_entropy(
+            expert_weights,
+            target_assignments,
+            reduction='mean'
+        )
         
         # Expert diversity loss (entropy)
         diversity_loss = -torch.mean(
             torch.sum(expert_weights * torch.log(expert_weights + 1e-6), dim=1)
         )
         
-        # Load balancing loss
+        # Load balancing loss - ensure uniform expert utilization
         usage_per_expert = expert_weights.mean(0)
-        target_usage = torch.ones_like(usage_per_expert) / self.num_experts
+        target_usage = torch.ones_like(usage_per_expert) / num_experts
         balance_loss = F.kl_div(
             usage_per_expert.log(),
             target_usage,
             reduction='batchmean'
         )
         
-        # Combine L2 losses from experts
-        total_l2_loss = sum(expert_l2_losses)
+        # Combine L2 losses efficiently using torch.stack
+        total_l2_loss = torch.stack(expert_l2_losses).sum()
         
         # Combine all losses with weights
         total_loss = (
             ce_loss + 
-            0.1 * diversity_loss +   # Small weight for diversity
-            0.01 * balance_loss +     # Small weight for balance
-            0.001 * total_l2_loss     # Very small weight for L2
+            0.5 * expert_assignment_loss +  # Higher weight for assignment loss
+            0.01 * diversity_loss +         # Small weight for diversity
+            0.01 * balance_loss +           # Small weight for balance
+            0.001 * total_l2_loss          # Very small weight for L2
         )
         
         # Store components for monitoring
         self.loss_components = {
             'ce_loss': ce_loss.item(),
+            'expert_assignment_loss': expert_assignment_loss.item(),
             'diversity_loss': diversity_loss.item(),
             'balance_loss': balance_loss.item(),
             'l2_loss': total_l2_loss.item(),
