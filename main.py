@@ -16,6 +16,8 @@ from tqdm import tqdm
 import numpy as np
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
 from torchinfo import summary
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def set_seed(seed: Optional[int] = 42) -> None:
     """Set all random seeds for reproducibility."""

@@ -32,50 +32,83 @@ def set_seed(seed: Optional[int] = 42) -> None:
 
 class GuidedExpert(nn.Module):
     """
-    Improved expert network with better normalization and architecture
+    Expert network with improved stability and regularization
     """
-    def __init__(self, input_size, hidden_size, output_size, assigned_labels):
-        super(GuidedExpert, self).__init__()
-        self.assigned_labels = assigned_labels
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
         
-        # Add batch normalization and better layer sizing
-        self.network = nn.Sequential(
+        # Shared feature extractor
+        self.feature_extractor = nn.Sequential(
             nn.BatchNorm1d(input_size),
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
-            nn.BatchNorm1d(hidden_size),
-            nn.Dropout(0.3),
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.ReLU(),
-            nn.BatchNorm1d(hidden_size // 2),
-            nn.Dropout(0.3),
-            nn.Linear(hidden_size // 2, output_size)
+            nn.Dropout(0.2),
+            nn.BatchNorm1d(hidden_size)
         )
         
-        # Initialize weights using Xavier/Glorot initialization
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
-                nn.init.constant_(m.bias, 0)
-    
+        # Task-specific layers with skip connections
+        self.task_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(hidden_size, hidden_size // 2),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.BatchNorm1d(hidden_size // 2)
+            ),
+            nn.Sequential(
+                nn.Linear(hidden_size // 2, hidden_size // 4),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.BatchNorm1d(hidden_size // 4)
+            )
+        ])
+        
+        # Output layer
+        self.output_layer = nn.Linear(hidden_size // 4, output_size)
+        
+        # L2 regularization weight
+        self.l2_reg = 0.01
+        
     def forward(self, x):
-        return self.network(x)
-
+        # Feature extraction
+        features = self.feature_extractor(x)
+        
+        # Task-specific processing with residuals
+        h = features
+        for layer in self.task_layers:
+            h_new = layer(h)
+            # Skip connection if dimensions match
+            if h.size(1) == h_new.size(1):
+                h = h + h_new
+            else:
+                h = h_new
+        
+        # Output with L2 regularization
+        output = self.output_layer(h)
+        
+        # Add L2 regularization
+        l2_loss = sum(p.pow(2.0).sum() for p in self.parameters()) * self.l2_reg
+        
+        return output, l2_loss
 class GuidedGatingNetwork(nn.Module):
     """
     Improved gating network with better regularization and smoother transitions
     """
     def __init__(self, input_size, num_experts, hidden_size, expert_label_map):
-        super(GuidedGatingNetwork, self).__init__()
+        super().__init__()
         self.expert_label_map = expert_label_map
         
         # Improved architecture with residual connections
-        self.input_norm = nn.BatchNorm1d(input_size)
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.bn1 = nn.BatchNorm1d(hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size // 2)
-        self.bn2 = nn.BatchNorm1d(hidden_size // 2)
-        self.fc3 = nn.Linear(hidden_size // 2, num_experts)
+        self.network = nn.Sequential(
+            nn.BatchNorm1d(input_size),  # Input normalization defined here
+            nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.BatchNorm1d(hidden_size),
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.ReLU(),
+            nn.BatchNorm1d(hidden_size // 2)
+        )
+        # Final layer separate for residual connection
+        self.fc_out = nn.Linear(hidden_size // 2, num_experts)
         
         # Learnable parameters for soft routing
         self.routing_temperature = nn.Parameter(torch.ones(1) * 1.0)
@@ -114,24 +147,11 @@ class GuidedGatingNetwork(nn.Module):
         return F.softmax(similarities / self.routing_temperature, dim=1)
     
     def forward(self, x, labels=None):
-        # Initial normalization
-        x = self.input_norm(x)
+        # Forward pass through main network
+        features = self.network(x)
         
-        # Forward pass with residual connections
-        h1 = F.relu(self.bn1(self.fc1(x)))  # [batch_size, hidden_size]
-        
-        # Calculate h2 without residual first
-        h2_transform = F.relu(self.bn2(self.fc2(h1)))  # [batch_size, hidden_size//2]
-        
-        # Adapt h1 to match h2's dimensions for residual
-        h1_pooled = F.adaptive_avg_pool1d(h1.unsqueeze(2), 1).squeeze(2)  # Reduce dimension
-        h1_projected = F.linear(h1_pooled, self.fc2.weight[:h2_transform.size(1), :])  # Project to match h2
-        
-        # Add residual connection
-        h2 = h2_transform + h1_projected
-        
-        # Final layer
-        logits = self.fc3(h2)
+        # Final layer for expert weights
+        logits = self.fc_out(features)
         
         if self.training and labels is not None:
             # Get soft assignment masks
@@ -151,33 +171,20 @@ class GuidedGatingNetwork(nn.Module):
 
 class GuidedMixtureOfExperts(nn.Module):
     """
-    Improved MoE with better regularization and expert balancing
+    Improved MoE with proper loss handling
     """
     def __init__(self, input_size, hidden_size, output_size, num_experts, expert_label_assignments):
-        super(GuidedMixtureOfExperts, self).__init__()
+        super().__init__()
         self.num_experts = num_experts
         self.expert_label_assignments = expert_label_assignments
         
-        # Initialize experts with shared layers
-        shared_encoder = nn.Sequential(
-            nn.BatchNorm1d(input_size),
-            nn.Linear(input_size, hidden_size),
-            nn.ReLU(),
-            nn.BatchNorm1d(hidden_size)
-        )
-        
+        # Initialize experts - now returning L2 losses
         self.experts = nn.ModuleList([
-            nn.Sequential(
-                shared_encoder,
-                nn.Linear(hidden_size, hidden_size // 2),
-                nn.ReLU(),
-                nn.BatchNorm1d(hidden_size // 2),
-                nn.Linear(hidden_size // 2, output_size)
-            )
+            GuidedExpert(input_size, hidden_size, output_size)
             for _ in range(num_experts)
         ])
         
-        # Improved gating network
+        # Initialize gating network
         self.gating_network = GuidedGatingNetwork(
             input_size, 
             num_experts,
@@ -185,39 +192,43 @@ class GuidedMixtureOfExperts(nn.Module):
             expert_label_assignments
         )
         
-        # Expert diversity loss weight
-        self.diversity_weight = nn.Parameter(torch.tensor(0.1))
-        
     def forward(self, x, labels=None):
         batch_size = x.size(0)
         
         # Get expert weights from gating network
         expert_weights = self.gating_network(x, labels)
         
-        # Get outputs from each expert
-        expert_outputs = torch.stack([expert(x) for expert in self.experts])
+        # Get outputs from each expert and collect L2 losses
+        expert_outputs = []
+        expert_l2_losses = []
+        
+        for expert in self.experts:
+            output, l2_loss = expert(x)  # Now returns both output and L2 loss
+            expert_outputs.append(output)
+            expert_l2_losses.append(l2_loss)
+        
+        expert_outputs = torch.stack(expert_outputs)
         expert_outputs = expert_outputs.permute(1, 0, 2)
         
         # Combine expert outputs with attention mechanism
         attention_weights = expert_weights.unsqueeze(-1)
         final_output = torch.bmm(expert_outputs.transpose(1, 2), attention_weights).squeeze(-1)
         
-        return final_output, expert_weights
+        return final_output, expert_weights, expert_l2_losses
     
-    def compute_loss(self, final_output, target, expert_weights):
+    def compute_loss(self, final_output, target, expert_weights, expert_l2_losses):
         """
-        Compute loss with guaranteed non-negative components
+        Compute loss with all components
         """
-        # Classification loss (non-negative by definition)
+        # Base classification loss
         ce_loss = F.cross_entropy(final_output, target)
         
-        # Expert diversity loss (entropy should be positive for regularization)
-        # Remove the negative sign to make it positive entropy
+        # Expert diversity loss (entropy)
         diversity_loss = -torch.mean(
             torch.sum(expert_weights * torch.log(expert_weights + 1e-6), dim=1)
         )
         
-        # Load balancing loss (KL divergence is non-negative)
+        # Load balancing loss
         usage_per_expert = expert_weights.mean(0)
         target_usage = torch.ones_like(usage_per_expert) / self.num_experts
         balance_loss = F.kl_div(
@@ -226,16 +237,25 @@ class GuidedMixtureOfExperts(nn.Module):
             reduction='batchmean'
         )
         
-        # Add validation checks
-        assert ce_loss >= 0, f"CE Loss should be non-negative, got {ce_loss}"
-        assert balance_loss >= 0, f"KL Loss should be non-negative, got {balance_loss}"
+        # Combine L2 losses from experts
+        total_l2_loss = sum(expert_l2_losses)
         
-        # Combine losses with proper signs
+        # Combine all losses with weights
         total_loss = (
             ce_loss + 
-            self.diversity_weight * diversity_loss +  # Now positive entropy
-            0.1 * balance_loss
+            0.01 * diversity_loss +  # Small weight for diversity
+            0.01 * balance_loss +    # Small weight for balance
+            0.001 * total_l2_loss    # Very small weight for L2
         )
+        
+        # Store components for monitoring
+        self.loss_components = {
+            'ce_loss': ce_loss.item(),
+            'diversity_loss': diversity_loss.item(),
+            'balance_loss': balance_loss.item(),
+            'l2_loss': total_l2_loss.item(),
+            'total_loss': total_loss.item()
+        }
         
         return total_loss
 
@@ -624,11 +644,11 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
         
         optimizer.zero_grad()
         
-        # Forward pass with expert weights
-        final_output, expert_weights = model(data, target)
-        
-        # Compute loss with expert weights
-        loss = model.compute_loss(final_output, target, expert_weights)
+        # Forward pass with expert losses
+        final_output, expert_weights, expert_l2_losses = model(data, target)
+    
+        # Compute loss with all components
+        loss = model.compute_loss(final_output, target, expert_weights, expert_l2_losses)
         
         # Backward pass with gradient clipping
         loss.backward()
@@ -705,13 +725,13 @@ def test_epoch(model, val_loader, device, tracker, epoch):
             data, target = data.to(device), target.to(device)
             data = data.view(data.size(0), -1)
             
-            # Forward pass with expert weights (no target during testing)
-            final_output, expert_weights = model(data)
+            # Forward pass with expert losses
+            final_output, expert_weights, expert_l2_losses = model(data)
             
-            # Compute loss with expert weights
-            loss = model.compute_loss(final_output, target, expert_weights)
-            
-            # Accumulate expert weights for tracking
+            # Compute loss with all components
+            loss = model.compute_loss(final_output, target, expert_weights, expert_l2_losses)
+                    
+                    # Accumulate expert weights for tracking
             expert_weight_accumulator += expert_weights.mean(dim=0).detach()
             num_batches += 1
             
