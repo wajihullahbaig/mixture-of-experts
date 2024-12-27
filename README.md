@@ -43,27 +43,11 @@
 ## MIXTURE OF GUIDED XPERTS on MNIST DATA
 =======================================
 
-![Mixture of Guided Experts Architecture](MOE-Arch-Guided.drawio.png)
-
 </div>
  Similarly we have a 'guided' of MoE. In this version we use labels to guide the 
  data to handle particular labels. Enforcing expert to only have a expertise 
  towards particular labels.
 
-### Expert Label Assignments:
-### ==================================================
-
-### Expert 0: Labels [0, 1]
-
-### Expert 1: Labels [2, 3]
-
-### Expert 2: Labels [4, 5]
-
-### Expert 3: Labels [6, 7]
-
-### Expert 4: Labels [8, 9]
-
-### ==================================================
 
 ## Key Features
 
