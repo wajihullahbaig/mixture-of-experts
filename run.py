@@ -20,7 +20,7 @@ def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Train MoE models')
     
-    parser.add_argument('--model-type', type=str, default='guided', choices=['base', 'guided'],
+    parser.add_argument('--model-type', type=str, default='base', choices=['base', 'guided'],
                         help='Type of MoE model to train')
     parser.add_argument('--input-size', type=int, default=784,
                         help='Input feature dimension')

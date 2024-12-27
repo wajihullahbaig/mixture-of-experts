@@ -74,3 +74,21 @@
   - `csv`: MOE activation activate as a CSV output
 
 
+## Results on 10 Mixture of Experts
+### Here are the losses and acurracies after 5 epochs
+
+![5 Epochs results](5-epochs-10-MOEs.png)
+
+### Assignment heatmaps
+How can we verify if the guided MOEs are actually working? Well we 
+can visualize the assigments during training and testing. Below are the two assignment maps
+
+#### Base Mixture of Experts
+
+![Base MoE assignment Map](base_label_distribution_epoch_5_batch_0.png)
+
+#### Base Mixture of Experts
+
+![Guided MoE assigment Map](guided_label_distribution_epoch_5_batch_0.png)
+
+From the maps its pretty evident that they guided MoE has better assignments. 
