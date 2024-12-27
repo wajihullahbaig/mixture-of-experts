@@ -419,7 +419,7 @@ def train_epoch(model: nn.Module,
         all_labels.extend(target.cpu().numpy())
         all_expert_weights.append(expert_weights.cpu())
         
-        if batch_idx % 200 == 0:
+        if batch_idx % 500 == 0:
             tracker.save_expert_activations(
                 expert_weights,
                 target,
