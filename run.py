@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 from base_moe import BaseMixtureOfExperts
-from guided_moe import GuidedMixtureOfExperts, create_improved_label_assignments
+from guided_moe import GuidedMixtureOfExperts, create_label_assignments
 from tracking import BaseExpertTracker
 from utils import (
     set_seed, print_model_info, print_dataset_info,
@@ -32,7 +32,7 @@ def parse_args():
                         help='Number of experts in mixture')
     parser.add_argument('--batch-size', type=int, default=256,
                         help='Training batch size')
-    parser.add_argument('--epochs', type=int, default=5,
+    parser.add_argument('--epochs', type=int, default=15,
                         help='Number of training epochs')
     parser.add_argument('--lr', type=float, default=0.001,
                         help='Learning rate')
@@ -97,7 +97,7 @@ def train_model(args):
     # Initialize model
     if args.model_type == 'guided':
         # Create label assignments for guided MoE
-        expert_label_assignments = create_improved_label_assignments(
+        expert_label_assignments = create_label_assignments(
             args.output_size,
             args.num_experts
         )
