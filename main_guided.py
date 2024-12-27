@@ -44,11 +44,11 @@ class GuidedExpert(nn.Module):
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
             nn.BatchNorm1d(hidden_size),
-            nn.Dropout(0.01),
+            nn.Dropout(0.3),
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.BatchNorm1d(hidden_size // 2),
-            nn.Dropout(0.01),
+            nn.Dropout(0.3),
             nn.Linear(hidden_size // 2, output_size)
         )
         
@@ -63,28 +63,23 @@ class GuidedExpert(nn.Module):
 
 class GuidedGatingNetwork(nn.Module):
     """
-    Improved gating network with better regularization and temperature scaling
+    Improved gating network with better regularization and smoother transitions
     """
     def __init__(self, input_size, num_experts, hidden_size, expert_label_map):
         super(GuidedGatingNetwork, self).__init__()
         self.expert_label_map = expert_label_map
         
-        # Add batch normalization and adjusted architecture
-        self.network = nn.Sequential(
-            nn.BatchNorm1d(input_size),
-            nn.Linear(input_size, hidden_size),
-            nn.ReLU(),
-            nn.BatchNorm1d(hidden_size),
-            nn.Dropout(0.01),
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.ReLU(),
-            nn.BatchNorm1d(hidden_size // 2),
-            nn.Dropout(0.01),
-            nn.Linear(hidden_size // 2, num_experts)
-        )
+        # Improved architecture with residual connections
+        self.input_norm = nn.BatchNorm1d(input_size)
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.bn1 = nn.BatchNorm1d(hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size // 2)
+        self.bn2 = nn.BatchNorm1d(hidden_size // 2)
+        self.fc3 = nn.Linear(hidden_size // 2, num_experts)
         
-        # Learnable temperature with constraint
-        self.temperature = nn.Parameter(torch.ones(1) * 1.0)
+        # Learnable parameters for soft routing
+        self.routing_temperature = nn.Parameter(torch.ones(1) * 1.0)
+        self.label_embedding = nn.Parameter(torch.randn(10, hidden_size // 4))
         
         # Initialize weights
         for m in self.modules():
@@ -92,88 +87,205 @@ class GuidedGatingNetwork(nn.Module):
                 nn.init.xavier_normal_(m.weight)
                 nn.init.constant_(m.bias, 0)
     
-    def forward(self, x, labels=None):
-        logits = self.network(x)
+    def compute_soft_masks(self, labels=None):
+        """Compute soft assignment masks based on label similarities"""
+        if labels is None:
+            return None
+            
+        # Get label embeddings for the batch
+        batch_embeddings = self.label_embedding[labels]
         
-        # Get temperature with minimum bound to prevent division by very small numbers
-        #temperature = torch.exp(self.log_temperature).clamp(min=0.1)
+        # Compute similarity between labels and expert assignments
+        expert_similarities = []
+        for expert_idx, assigned_labels in self.expert_label_map.items():
+            # Average embedding for assigned labels
+            expert_embedding = self.label_embedding[torch.tensor(assigned_labels)].mean(0)
+            
+            # Compute cosine similarity
+            similarity = F.cosine_similarity(
+                batch_embeddings,
+                expert_embedding.unsqueeze(0),
+                dim=1
+            )
+            expert_similarities.append(similarity)
+        
+        # Stack similarities and apply softmax with temperature
+        similarities = torch.stack(expert_similarities, dim=1)
+        return F.softmax(similarities / self.routing_temperature, dim=1)
+    
+    def forward(self, x, labels=None):
+        # Initial normalization
+        x = self.input_norm(x)
+        
+        # Forward pass with residual connections
+        h1 = F.relu(self.bn1(self.fc1(x)))  # [batch_size, hidden_size]
+        
+        # Calculate h2 without residual first
+        h2_transform = F.relu(self.bn2(self.fc2(h1)))  # [batch_size, hidden_size//2]
+        
+        # Adapt h1 to match h2's dimensions for residual
+        h1_pooled = F.adaptive_avg_pool1d(h1.unsqueeze(2), 1).squeeze(2)  # Reduce dimension
+        h1_projected = F.linear(h1_pooled, self.fc2.weight[:h2_transform.size(1), :])  # Project to match h2
+        
+        # Add residual connection
+        h2 = h2_transform + h1_projected
+        
+        # Final layer
+        logits = self.fc3(h2)
         
         if self.training and labels is not None:
-            # Create expert mask based on label assignments
-            batch_size = labels.size(0)
-            expert_mask = torch.zeros((batch_size, len(self.expert_label_map)), 
-                                   device=labels.device)
+            # Get soft assignment masks
+            soft_masks = self.compute_soft_masks(labels)
             
-            for i, label in enumerate(labels):
-                for expert_idx, assigned_labels in self.expert_label_map.items():
-                    if label.item() in assigned_labels:
-                        expert_mask[i, expert_idx] = 1.0
+            # Combine network output with soft guidance
+            routing_weights = F.softmax(logits / self.routing_temperature, dim=1)
             
-            # Add small epsilon to prevent zero probabilities
-            expert_mask = expert_mask + 1e-6
+            # Interpolate between learned and guided routing based on training progress
+            mixing_factor = torch.sigmoid(self.routing_temperature)
+            final_weights = mixing_factor * routing_weights + (1 - mixing_factor) * soft_masks
             
-            # Apply mask and temperature scaling
-            masked_logits = logits * expert_mask
-            scaled_logits = masked_logits / self.temperature
-            
-            # Add label smoothing to prevent overconfident predictions
-            smoothed_probs = F.softmax(scaled_logits, dim=-1)
-            smoothed_probs = smoothed_probs * 0.9 + 0.1 / len(self.expert_label_map)
-            
-            return smoothed_probs
+            return final_weights
         else:
-            # During inference, use normal softmax with temperature
-            scaled_logits = logits / self.temperature
-            return F.softmax(scaled_logits, dim=-1)
+            # During inference, use pure network output with temperature
+            return F.softmax(logits / self.routing_temperature, dim=1)
 
 class GuidedMixtureOfExperts(nn.Module):
     """
-    Simplified Guided Mixture of Experts model with basic loss handling
+    Improved MoE with better regularization and expert balancing
     """
     def __init__(self, input_size, hidden_size, output_size, num_experts, expert_label_assignments):
         super(GuidedMixtureOfExperts, self).__init__()
         self.num_experts = num_experts
         self.expert_label_assignments = expert_label_assignments
         
-        # Initialize experts
+        # Initialize experts with shared layers
+        shared_encoder = nn.Sequential(
+            nn.BatchNorm1d(input_size),
+            nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.BatchNorm1d(hidden_size)
+        )
+        
         self.experts = nn.ModuleList([
-            GuidedExpert(input_size, hidden_size, output_size, assigned_labels) 
-            for assigned_labels in expert_label_assignments.values()
+            nn.Sequential(
+                shared_encoder,
+                nn.Linear(hidden_size, hidden_size // 2),
+                nn.ReLU(),
+                nn.BatchNorm1d(hidden_size // 2),
+                nn.Linear(hidden_size // 2, output_size)
+            )
+            for _ in range(num_experts)
         ])
         
-        # Initialize gating network
+        # Improved gating network
         self.gating_network = GuidedGatingNetwork(
             input_size, 
-            num_experts, 
+            num_experts,
             hidden_size,
             expert_label_assignments
         )
-    
+        
+        # Expert diversity loss weight
+        self.diversity_weight = nn.Parameter(torch.tensor(0.1))
+        
     def forward(self, x, labels=None):
+        batch_size = x.size(0)
+        
         # Get expert weights from gating network
         expert_weights = self.gating_network(x, labels)
         
         # Get outputs from each expert
         expert_outputs = torch.stack([expert(x) for expert in self.experts])
-        
-        # Combine expert outputs
         expert_outputs = expert_outputs.permute(1, 0, 2)
-        expert_weights = expert_weights.unsqueeze(-1)
         
-        # Add small epsilon to prevent numerical instability
-        expert_weights = expert_weights + 1e-6
-        expert_weights = expert_weights / expert_weights.sum(dim=1, keepdim=True)
-        
-        final_output = torch.bmm(
-            expert_outputs.transpose(1, 2),
-            expert_weights
-        ).squeeze(-1)
+        # Combine expert outputs with attention mechanism
+        attention_weights = expert_weights.unsqueeze(-1)
+        final_output = torch.bmm(expert_outputs.transpose(1, 2), attention_weights).squeeze(-1)
         
         return final_output, expert_weights
     
-    def compute_loss(self, final_output, target):
-        # Simple classification loss using cross entropy
-        return F.cross_entropy(final_output, target)
+    def compute_loss(self, final_output, target, expert_weights):
+        """
+        Compute loss with guaranteed non-negative components
+        """
+        # Classification loss (non-negative by definition)
+        ce_loss = F.cross_entropy(final_output, target)
+        
+        # Expert diversity loss (entropy should be positive for regularization)
+        # Remove the negative sign to make it positive entropy
+        diversity_loss = -torch.mean(
+            torch.sum(expert_weights * torch.log(expert_weights + 1e-6), dim=1)
+        )
+        
+        # Load balancing loss (KL divergence is non-negative)
+        usage_per_expert = expert_weights.mean(0)
+        target_usage = torch.ones_like(usage_per_expert) / self.num_experts
+        balance_loss = F.kl_div(
+            usage_per_expert.log(),
+            target_usage,
+            reduction='batchmean'
+        )
+        
+        # Add validation checks
+        assert ce_loss >= 0, f"CE Loss should be non-negative, got {ce_loss}"
+        assert balance_loss >= 0, f"KL Loss should be non-negative, got {balance_loss}"
+        
+        # Combine losses with proper signs
+        total_loss = (
+            ce_loss + 
+            self.diversity_weight * diversity_loss +  # Now positive entropy
+            0.1 * balance_loss
+        )
+        
+        return total_loss
+
+def create_improved_label_assignments(num_classes, num_experts):
+    """
+    Create overlapping label assignments for better generalization
+    """
+    assignments = {}
+    labels_per_expert = num_classes // (num_experts - 1)  # Allow overlap
+    
+    for expert_idx in range(num_experts):
+        start_idx = expert_idx * (labels_per_expert - 1)
+        end_idx = min(start_idx + labels_per_expert, num_classes)
+        
+        # Add overlapping labels
+        assignments[expert_idx] = list(range(start_idx, end_idx))
+        
+        # Add some random labels from other ranges for diversity
+        other_labels = list(set(range(num_classes)) - set(assignments[expert_idx]))
+        if other_labels:
+            num_extra = min(2, len(other_labels))
+            assignments[expert_idx].extend(
+                random.sample(other_labels, num_extra)
+            )
+    
+    return assignments
+
+def create_improved_label_assignments(num_classes, num_experts):
+    """
+    Create overlapping label assignments for better generalization
+    """
+    assignments = {}
+    labels_per_expert = num_classes // (num_experts - 1)  # Allow overlap
+    
+    for expert_idx in range(num_experts):
+        start_idx = expert_idx * (labels_per_expert - 1)
+        end_idx = min(start_idx + labels_per_expert, num_classes)
+        
+        # Add overlapping labels
+        assignments[expert_idx] = list(range(start_idx, end_idx))
+        
+        # Add some random labels from other ranges for diversity
+        other_labels = list(set(range(num_classes)) - set(assignments[expert_idx]))
+        if other_labels:
+            num_extra = min(2, len(other_labels))
+            assignments[expert_idx].extend(
+                random.sample(other_labels, num_extra)
+            )
+    
+    return assignments
 
 class ExpertActivationTracker:
     """
@@ -493,7 +605,7 @@ def create_label_assignments(num_classes, num_experts, labels_per_expert):
 
 def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
     """
-    Simplified training loop for one epoch
+    Improved training loop supporting expert weights and enhanced loss computation
     """
     model.train()
     total_loss = 0
@@ -501,6 +613,8 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
     total = 0
     all_preds = []
     all_labels = []
+    expert_weight_accumulator = torch.zeros(model.num_experts).to(device)
+    num_batches = 0
     
     progress_bar = tqdm(train_loader, desc=f'Epoch {epoch}')
     
@@ -510,21 +624,23 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
         
         optimizer.zero_grad()
         
-        # Forward pass
+        # Forward pass with expert weights
         final_output, expert_weights = model(data, target)
         
-        # Compute simplified loss
-        loss = model.compute_loss(final_output, target)
+        # Compute loss with expert weights
+        loss = model.compute_loss(final_output, target, expert_weights)
         
         # Backward pass with gradient clipping
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
-        # Accumulate loss
-        total_loss += loss.item()
+        # Accumulate expert weights for tracking
+        expert_weight_accumulator += expert_weights.mean(dim=0).detach()
+        num_batches += 1
         
-        # Calculate accuracy
+        # Accumulate metrics
+        total_loss += loss.item()
         pred = final_output.argmax(dim=1)
         correct += pred.eq(target).sum().item()
         total += target.size(0)
@@ -534,7 +650,7 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
         all_labels.extend(target.cpu().numpy())
         
         # Save activations and expert usage periodically
-        if batch_idx % 200 == 0:
+        if batch_idx % 300 == 0:
             tracker.save_expert_activations(
                 expert_weights,
                 target,
@@ -542,46 +658,36 @@ def train_epoch(model, train_loader, optimizer, device, tracker, epoch):
                 batch_idx
             )
             
-            # Update progress bar with metrics
+            # Calculate expert utilization metrics
+            expert_usage = expert_weights.mean(dim=0).detach()
+            expert_entropy = -(expert_usage * torch.log(expert_usage + 1e-10)).sum()
+            
+            # Update progress bar with enhanced metrics
             progress_bar.set_postfix({
                 'loss': f'{total_loss/(batch_idx+1):.3f}',
-                'acc': f'{100.*correct/total:.2f}%'
+                'acc': f'{100.*correct/total:.2f}%',
+                'expert_entropy': f'{expert_entropy.item():.2f}'
             })
     
-    # Calculate epoch metrics
+    # Calculate final metrics
     epoch_loss = total_loss / len(train_loader)
     epoch_acc = 100. * correct / total
     
-    # Calculate final expert usage for the epoch
-    expert_usage = expert_weights.mean(dim=0).squeeze().detach().cpu().numpy()
+    # Calculate average expert usage
+    avg_expert_weights = expert_weight_accumulator / num_batches
     
-    # Generate and save confusion matrix
+    # Generate confusion matrix and metrics
     cm, cm_metrics = tracker.save_confusion_matrix(
         np.array(all_labels),
         np.array(all_preds),
         epoch
-    )       
-
-    return epoch_loss, epoch_acc, expert_usage, cm_metrics
-
-def print_dataset_info(train_loader):
-    """Print information about the dataset"""
-    total_samples = len(train_loader.dataset)
-    batch_size = train_loader.batch_size
-    num_batches = len(train_loader)
+    )
     
-    print("\nDataset Information:")
-    print("=" * 50)
-    print(f"Total number of samples: {total_samples:,}")
-    print(f"Batch size: {batch_size}")
-    print(f"Number of batches: {num_batches}")
-    print(f"Input shape: {train_loader.dataset[0][0].shape}")
-    print(f"Number of classes: {len(set(train_loader.dataset.targets.numpy()))}")
-    print("=" * 50)
+    return epoch_loss, epoch_acc, avg_expert_weights.cpu().numpy(), cm_metrics
 
 def test_epoch(model, val_loader, device, tracker, epoch):
     """
-    Simplified validation loop
+    Improved validation loop supporting expert weights and enhanced metrics
     """
     model.eval()
     total_loss = 0
@@ -589,6 +695,8 @@ def test_epoch(model, val_loader, device, tracker, epoch):
     total = 0
     all_preds = []
     all_labels = []
+    expert_weight_accumulator = torch.zeros(model.num_experts).to(device)
+    num_batches = 0
     
     with torch.no_grad():
         progress_bar = tqdm(val_loader, desc=f'Validation Epoch {epoch}')
@@ -597,16 +705,18 @@ def test_epoch(model, val_loader, device, tracker, epoch):
             data, target = data.to(device), target.to(device)
             data = data.view(data.size(0), -1)
             
-            # Forward pass
+            # Forward pass with expert weights (no target during testing)
             final_output, expert_weights = model(data)
             
-            # Compute loss
-            loss = model.compute_loss(final_output, target)
+            # Compute loss with expert weights
+            loss = model.compute_loss(final_output, target, expert_weights)
             
-            # Accumulate loss
+            # Accumulate expert weights for tracking
+            expert_weight_accumulator += expert_weights.mean(dim=0).detach()
+            num_batches += 1
+            
+            # Accumulate metrics
             total_loss += loss.item()
-            
-            # Calculate accuracy
             pred = final_output.argmax(dim=1)
             correct += pred.eq(target).sum().item()
             total += target.size(0)
@@ -623,28 +733,48 @@ def test_epoch(model, val_loader, device, tracker, epoch):
                     epoch,
                     batch_idx
                 )
-            
-            # Update progress bar
-            progress_bar.set_postfix({
-                'loss': f'{total_loss/(batch_idx+1):.3f}',
-                'acc': f'{100.*correct/total:.2f}%'
-            })
+                
+                # Calculate expert utilization metrics
+                expert_usage = expert_weights.mean(dim=0).detach()
+                expert_entropy = -(expert_usage * torch.log(expert_usage + 1e-10)).sum()
+                
+                # Update progress bar with enhanced metrics
+                progress_bar.set_postfix({
+                    'loss': f'{total_loss/(batch_idx+1):.3f}',
+                    'acc': f'{100.*correct/total:.2f}%',
+                    'expert_entropy': f'{expert_entropy.item():.2f}'
+                })
     
-    # Calculate epoch metrics
+    # Calculate final metrics
     epoch_loss = total_loss / len(val_loader)
     epoch_acc = 100. * correct / total
     
-    # Calculate expert usage
-    expert_usage = expert_weights.mean(dim=0).squeeze().detach().cpu().numpy()
+    # Calculate average expert usage
+    avg_expert_weights = expert_weight_accumulator / num_batches
     
-    # Generate and save confusion matrix
+    # Generate confusion matrix and metrics
     cm, cm_metrics = tracker.save_confusion_matrix(
         np.array(all_labels),
         np.array(all_preds),
         epoch
     )
     
-    return epoch_loss, epoch_acc, expert_usage, cm_metrics
+    return epoch_loss, epoch_acc, avg_expert_weights.cpu().numpy(), cm_metrics
+
+def print_dataset_info(train_loader):
+    """Print information about the dataset"""
+    total_samples = len(train_loader.dataset)
+    batch_size = train_loader.batch_size
+    num_batches = len(train_loader)
+    
+    print("\nDataset Information:")
+    print("=" * 50)
+    print(f"Total number of samples: {total_samples:,}")
+    print(f"Batch size: {batch_size}")
+    print(f"Number of batches: {num_batches}")
+    print(f"Input shape: {train_loader.dataset[0][0].shape}")
+    print(f"Number of classes: {len(set(train_loader.dataset.targets.numpy()))}")
+    print("=" * 50)
 
 def main():
     # Set random seed
@@ -657,7 +787,7 @@ def main():
     num_experts = 5   # Using 5 experts
     labels_per_expert = 2  # Each expert handles 2 consecutive digits
     learning_rate = 0.001
-    num_epochs = 100
+    num_epochs = 10
     batch_size = 256
     
     # Create label assignments
@@ -717,7 +847,7 @@ def main():
         hidden_size,
         output_size,
         num_experts,
-        expert_label_assignments
+        expert_label_assignments=create_improved_label_assignments(10, 5)
     ).to(device)
     
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
