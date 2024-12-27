@@ -20,5 +20,4 @@ htmlcov/
 *.pdf
 
 data/
-moe_outputs/
-guided_moe_outputs/
+outputs/
