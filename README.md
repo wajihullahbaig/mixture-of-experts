@@ -67,11 +67,11 @@
 How can we verify if the guided MOEs are actually working? Well we 
 can visualize the assigments during training and testing. Below are the two assignment maps
 
-#### Guided Mixture of Experts
+#### Base Mixture of Experts
 
 ![Base MoE assignment Map](base_label_distribution_epoch_5_batch_0.png)
 
-#### Base Mixture of Experts
+#### Guided Mixture of Experts
 
 ![Guided MoE assigment Map](guided_label_distribution_epoch_5_batch_0.png)
 
