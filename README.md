@@ -40,7 +40,7 @@
     python main.py
     ```
 
-## MIXTURE OF GUIDED XPERTS on MNIST DATA
+## MIXTURE OF GUIDED EXPERTS on MNIST DATA
 =======================================
 
 </div>
@@ -48,6 +48,10 @@
  data to handle particular labels. Enforcing expert to only have a expertise 
  towards particular labels.
 
+## Flow Diagram of Gudied MoEs
+Labels and features flow into the Gudied MoE and we calcualte 4 different losses - all of them which are weighted. 
+
+![Flow diagram Guided MoE](Guided-MoE-Flow-Diagram.drawio.png)
 
 ## Key Features
 
