@@ -216,10 +216,10 @@ class GuidedMixtureOfExperts(nn.Module):
         
         # Combine all losses
         total_loss = (
-            0.3 * ce_loss + 
-            0.3 * expert_assignment_loss +  # Higher weight for assignment
-            0.2 * diversity_loss +         # Small weight for diversity
-            0.2* total_l2_loss          # Very small weight for L2
+            0.1 * ce_loss + 
+            0.7 * expert_assignment_loss +  # Higher weight for assignment
+            0.1 * diversity_loss +         # Small weight for diversity
+            0.1 * total_l2_loss          # Very small weight for L2
         )
         
         # Store components for monitoring

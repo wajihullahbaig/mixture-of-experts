@@ -18,7 +18,7 @@
   - `csv`: MOE activation activate as a CSV output
 
 ## Activation of MOE
-![Gattin Network Activation](Gatting-Network-Decision.drawio.png)
+![Gatting Network Activation](Gatting-Network-Decision.drawio.png)
 
 ## Setup Instructions
 
@@ -51,7 +51,10 @@
 ## Flow Diagram of Gudied MoEs
 Labels and features flow into the Gudied MoE and we calcualte 4 different losses - all of them which are weighted. 
 
-![Flow diagram Guided MoE](Guided-MoE-Flow-Diagram.drawio.png)
+![Training flow diagram](Guided-MoE-Flow-Diagram-Training.drawio.png)
+
+
+![Inference flow diagram](Guided-MoE-Flow-Diagram-Inference.drawio.png)
 
 ## Key Features
 
