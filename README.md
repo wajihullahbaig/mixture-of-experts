@@ -75,7 +75,7 @@ can visualize the assigments during training and testing. Below are the two assi
 
 ![Base MoE assignment Map](base_label_distribution_epoch_5_batch_0.png)
 
-#### Base Mixture of Experts
+#### Guided Mixture of Experts
 
 ![Guided MoE assigment Map](guided_label_distribution_epoch_5_batch_0.png)
 
