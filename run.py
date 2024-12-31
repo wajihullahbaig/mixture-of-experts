@@ -30,9 +30,9 @@ def parse_args():
                         help='Output dimension (num classes)')
     parser.add_argument('--num-experts', type=int, default=10,
                         help='Number of experts in mixture')
-    parser.add_argument('--batch-size', type=int, default=1024,
+    parser.add_argument('--batch-size', type=int, default=2048,
                         help='Training batch size')
-    parser.add_argument('--epochs', type=int, default=40,
+    parser.add_argument('--epochs', type=int, default=100,
                         help='Number of training epochs')
     parser.add_argument('--lr', type=float, default=0.001,
                         help='Learning rate')
