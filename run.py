@@ -20,7 +20,7 @@ def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Train MoE models')
     
-    parser.add_argument('--model-type', type=str, default='guided', choices=['base', 'guided'],
+    parser.add_argument('--model-type', type=str, default='base', choices=['base', 'guided'],
                         help='Type of MoE model to train')
     parser.add_argument('--input-size', type=int, default=784,
                         help='Input feature dimension')
@@ -30,9 +30,9 @@ def parse_args():
                         help='Output dimension (num classes)')
     parser.add_argument('--num-experts', type=int, default=10,
                         help='Number of experts in mixture')
-    parser.add_argument('--batch-size', type=int, default=256,
+    parser.add_argument('--batch-size', type=int, default=1024,
                         help='Training batch size')
-    parser.add_argument('--epochs', type=int, default=20,
+    parser.add_argument('--epochs', type=int, default=40,
                         help='Number of training epochs')
     parser.add_argument('--lr', type=float, default=0.001,
                         help='Learning rate')
@@ -54,7 +54,7 @@ def load_data(batch_size: int) -> tuple[DataLoader, DataLoader]:
         './data',
         train=True,
         download=True,
-        transform=transform
+        transform=transform 
     )
     
     test_dataset = datasets.MNIST(
