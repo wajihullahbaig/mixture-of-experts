@@ -5,7 +5,7 @@ def parse_args() -> Config:
     parser = argparse.ArgumentParser(description='Mixture of Experts Training')
     
     # Model arguments
-    parser.add_argument('--model-type', type=str, default='guided',
+    parser.add_argument('--model-type', type=str, default='base',
                       choices=['base', 'guided'],
                       help='Type of MoE model')
     parser.add_argument('--architecture', type=str, default='2d',
@@ -17,7 +17,7 @@ def parse_args() -> Config:
                       help='Hidden layer size')
     
     # Data arguments
-    parser.add_argument('--dataset', type=str, default='cifar',
+    parser.add_argument('--dataset', type=str, default='mnist',
                       choices=['mnist', 'cifar'],
                       help='Dataset to use')
     parser.add_argument('--batch-size', type=int, default=128,

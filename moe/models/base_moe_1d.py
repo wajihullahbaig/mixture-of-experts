@@ -128,10 +128,10 @@ class BaseMoE1D(nn.Module):
         
         # Combine all losses
         total_loss = (
-            ce_loss + 
+            0.6*ce_loss + 
             0.1 * diversity_loss +
-            0.1 * balance_loss +
-            0.01 * total_l2_loss
+            0.2 * balance_loss +
+            0.1 * total_l2_loss
         )
         
         # Store components for monitoring
