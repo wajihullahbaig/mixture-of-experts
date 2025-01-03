@@ -5,14 +5,15 @@ from torch.utils.data import DataLoader
 from typing import Dict
 from tqdm import tqdm
 
-from utils.args import parse_args
+from moe.factories.moe_factory import MoEFactory
+from utils.args import parse_args, print_config
 from utils.seeding import set_seed
 from utils.tracking import ExpertTracker
-from data_handlers.datasets import DatasetFactory
+from moe.factories.datasets_factory import DatasetFactory
 from data_handlers.data_utils import DataProcessor
 from models.guided_moe_1d import GuidedMoE1D
 from models.guided_moe_2d import GuidedMoE2D
-from utils.model_utils import create_model,create_expert_assignments
+from utils.model_utils import create_expert_assignments
 
 def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Optimizer,
                 data_processor: DataProcessor, device: str, tracker: ExpertTracker,
@@ -154,7 +155,7 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
 def main():
     # Parse arguments
     config = parse_args()
-    
+    print_config(config)
     # Set device
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
     
@@ -162,39 +163,39 @@ def main():
     
     # Create data loaders
     train_loader, val_loader = DatasetFactory.create_dataloaders(
-    dataset=config.data.dataset,
-    data_dir=config.data.data_dir,
-    batch_size=config.data.batch_size,
-    num_workers=config.data.num_workers,
-    architecture=config.model.architecture
+    dataset=config.dataset_name,
+    data_dir=config.data_dir,
+    batch_size=config.training_config.batch_size,
+    num_workers=config.training_config.num_workers,
+    architecture=config.moe_config.architecture
 )   
-    # Create model
-    model = create_model(config).to(device)
+    # Create model using factory
+    model = MoEFactory.create_moe(config.moe_config).to(device)
     # Create optimizer
     optimizer = optim.Adam(
         model.parameters(),
-        lr=config.training.learning_rate,
-        weight_decay=config.training.weight_decay
+        lr=config.training_config.learning_rate,
+        weight_decay=config.training_config.weight_decay
     )
     
     # Create tracker
-    dcfg = DatasetFactory.get_dataset_config(config.data.dataset, config.model.architecture)
-    expert_assignments = create_expert_assignments(dcfg["num_classes"], config.model.num_experts)
+    dcfg = DatasetFactory.get_dataset_config(config.dataset_name, config.moe_config.architecture)
+    expert_assignments = create_expert_assignments(dcfg["num_classes"], config.moe_config.num_experts)
     tracker = ExpertTracker(
-        model_type=config.model.model_type,
-        architecture=config.model.architecture,
+        model_type=config.moe_config.moe_type.name,
+        architecture=config.moe_config.architecture.name,
         base_path=config.output_dir,
         dataset_name=config.dataset_name,
-        num_experts=config.model.num_experts,
-        expert_label_assignments=expert_assignments if config.model.model_type == 'guided' else None
+        num_experts=config.moe_config.num_experts,
+        expert_label_assignments=expert_assignments if config.moe_config.moe_type.name == 'GUIDED' else None
     )
     
     # Create data processor
-    data_processor = DataProcessor(config.model.architecture)
+    data_processor = DataProcessor(config.moe_config.architecture)
     
     # Training loop
     best_val_acc = 0
-    for epoch in range(config.training.num_epochs):
+    for epoch in range(config.training_config.num_epochs):
         # Train
         train_metrics = train_epoch(
             model, train_loader, optimizer, data_processor, device, tracker, epoch

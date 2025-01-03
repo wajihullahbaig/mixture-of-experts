@@ -3,10 +3,11 @@
 import torch
 from typing import Tuple
 
+from moe.configs.default_config import ArchitectureType
 class DataProcessor:
     """Process data according to architecture"""
     
-    def __init__(self, architecture: str):
+    def __init__(self, architecture: ArchitectureType):
         """
         Initialize data processor
         Args:
@@ -20,7 +21,7 @@ class DataProcessor:
         """Process a batch of data based on architecture"""
         inputs, targets = batch
         
-        if self.architecture == '1d':
+        if self.architecture == ArchitectureType.ARCH_1D:
             # Flatten input for 1D architecture
             inputs = inputs.view(inputs.size(0), -1)
         

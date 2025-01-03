@@ -3,6 +3,8 @@
 =======================================
 ## MIXTURE OF EXPERTS on MNIST DATA
 
+![Mixture of Experts Design Architecture](MoE-Arch-Design.png)
+
 ![Mixture of Experts Architecture](MOE-Arch.drawio.png)
 
 </div>

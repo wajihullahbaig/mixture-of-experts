@@ -32,7 +32,7 @@ class ExpertTracker:
         self.expert_label_assignments = expert_label_assignments
         
         # Setup directory structure
-        self.base_dir = os.path.join(base_path, f'{model_type}/{architecture}/{dataset_name}', self.timestamp)
+        self.base_dir = os.path.join(base_path, f'{dataset_name}/{model_type}/{architecture}', self.timestamp)
         self.plots_dir = os.path.join(self.base_dir, 'plots')
         self.data_dir = os.path.join(self.base_dir, 'data')
         self.model_dir = os.path.join(self.base_dir, 'models')
