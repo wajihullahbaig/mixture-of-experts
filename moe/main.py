@@ -15,6 +15,7 @@ from data_handlers.data_utils import DataProcessor
 from models.guided_moe_1d import GuidedMoE1D
 from models.guided_moe_2d import GuidedMoE2D
 from utils.model_utils import create_expert_assignments
+from utils.app_logger import AppLogger
 
 def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Optimizer,
                 data_processor: DataProcessor, device: str, tracker: ExpertTracker,
@@ -154,9 +155,11 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
     }
 
 def main():
+    logger = AppLogger("MOEs-Guided")
+    
     # Parse arguments
     config = parse_args()
-    print_config(config)
+    print_config(config,logger)
     # Set device
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
     
@@ -220,10 +223,10 @@ def main():
             tracker.save_model(model, optimizer, epoch, val_metrics)
         
         # Print progress
-        print(f"Epoch {epoch}:")
-        print(f"Train Loss: {train_metrics['loss']:.4f}, Train Acc: {train_metrics['accuracy']:.2f}%")
-        print(f"Val Loss: {val_metrics['loss']:.4f}, Val Acc: {val_metrics['accuracy']:.2f}%")
-        print("-" * 50)
+        logger.info(f"Epoch {epoch}:")
+        logger.info(f"Train Loss: {train_metrics['loss']:.4f}, Train Acc: {train_metrics['accuracy']:.2f}%")
+        logger.info(f"Val Loss: {val_metrics['loss']:.4f}, Val Acc: {val_metrics['accuracy']:.2f}%")
+        logger.info("-" * 50)
 
 if __name__ == "__main__":
     main()

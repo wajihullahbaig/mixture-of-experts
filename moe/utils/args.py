@@ -111,31 +111,31 @@ def parse_args() -> ExperimentConfig:
     
     return config
 
-def print_config(config: ExperimentConfig) -> None:
+def print_config(config: ExperimentConfig,logger) -> None:
     """Print configuration in a readable format"""
-    print("\nExperiment Configuration:")
-    print("=" * 50)
+    logger.info("\nExperiment Configuration:")
+    logger.info("=" * 50)
     
-    print("\nMoE Configuration:")
-    print("-" * 30)
+    logger.info("\nMoE Configuration:")
+    logger.info("-" * 30)
     for key, value in vars(config.moe_config).items():
         if key == 'expert_label_map' and value is not None:
-            print(f"  {key}:")
+            logger.info(f"  {key}:")
             for expert_id, labels in value.items():
-                print(f"    Expert {expert_id}: {labels}")
+                logger.info(f"    Expert {expert_id}: {labels}")
         else:
-            print(f"  {key}: {value}")
+            logger.info(f"  {key}: {value}")
     
-    print("\nTraining Configuration:")
-    print("-" * 30)
+    logger.info("\nTraining Configuration:")
+    logger.info("-" * 30)
     for key, value in vars(config.training_config).items():
-        print(f"  {key}: {value}")
+        logger.info(f"  {key}: {value}")
     
-    print("\nGeneral Configuration:")
-    print("-" * 30)
-    print(f"  dataset_name: {config.dataset_name}")
-    print(f"  data_dir: {config.data_dir}")
-    print(f"  output_dir: {config.output_dir}")
-    print(f"  device: {config.device}")
-    print(f"  seed: {config.seed}")
-    print("\n" + "=" * 50)
+    logger.info("\nGeneral Configuration:")
+    logger.info("-" * 30)
+    logger.info(f"  dataset_name: {config.dataset_name}")
+    logger.info(f"  data_dir: {config.data_dir}")
+    logger.info(f"  output_dir: {config.output_dir}")
+    logger.info(f"  device: {config.device}")
+    logger.info(f"  seed: {config.seed}")
+    logger.info("\n" + "=" * 50)
