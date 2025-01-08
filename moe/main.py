@@ -155,7 +155,7 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
     }
 
 def main():
-    logger = AppLogger(name="Guided MOE",log_file="outputs/app.log")
+    logger = AppLogger(name="Guided MOE",log_dir="outputs",log_file="app.log")
     
     # Parse arguments
     config = parse_args()

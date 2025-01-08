@@ -1,0 +1,40 @@
+2025-01-08 17:12:04,610 - Guided MOE - INFO - 
+Experiment Configuration:
+2025-01-08 17:12:04,611 - Guided MOE - INFO - ==================================================
+2025-01-08 17:12:04,611 - Guided MOE - INFO - 
+MoE Configuration:
+2025-01-08 17:12:04,612 - Guided MOE - INFO - ------------------------------
+2025-01-08 17:12:04,612 - Guided MOE - INFO -   moe_type: MoEType.GUIDED
+2025-01-08 17:12:04,613 - Guided MOE - INFO -   architecture: ArchitectureType.ARCH_RESNET18_2D
+2025-01-08 17:12:04,613 - Guided MOE - INFO -   num_experts: 5
+2025-01-08 17:12:04,613 - Guided MOE - INFO -   input_size: (3, 32, 32)
+2025-01-08 17:12:04,613 - Guided MOE - INFO -   hidden_size: 256
+2025-01-08 17:12:04,613 - Guided MOE - INFO -   output_size: 10
+2025-01-08 17:12:04,614 - Guided MOE - INFO -   expert_label_map:
+2025-01-08 17:12:04,615 - Guided MOE - INFO -     Expert 0: [0, 1]
+2025-01-08 17:12:04,615 - Guided MOE - INFO -     Expert 1: [2, 3]
+2025-01-08 17:12:04,615 - Guided MOE - INFO -     Expert 2: [4, 5]
+2025-01-08 17:12:04,615 - Guided MOE - INFO -     Expert 3: [6, 7]
+2025-01-08 17:12:04,616 - Guided MOE - INFO -     Expert 4: [8, 9]
+2025-01-08 17:12:04,616 - Guided MOE - INFO -   dropout_rate: 0.3
+2025-01-08 17:12:04,616 - Guided MOE - INFO -   l2_reg: 0.01
+2025-01-08 17:12:04,616 - Guided MOE - INFO - 
+Training Configuration:
+2025-01-08 17:12:04,617 - Guided MOE - INFO - ------------------------------
+2025-01-08 17:12:04,617 - Guided MOE - INFO -   num_epochs: 100
+2025-01-08 17:12:04,618 - Guided MOE - INFO -   batch_size: 128
+2025-01-08 17:12:04,618 - Guided MOE - INFO -   learning_rate: 0.001
+2025-01-08 17:12:04,618 - Guided MOE - INFO -   weight_decay: 1e-05
+2025-01-08 17:12:04,618 - Guided MOE - INFO -   num_workers: 4
+2025-01-08 17:12:04,618 - Guided MOE - INFO -   clip_grad_norm: 1.0
+2025-01-08 17:12:04,619 - Guided MOE - INFO -   early_stopping_patience: 10
+2025-01-08 17:12:04,619 - Guided MOE - INFO - 
+General Configuration:
+2025-01-08 17:12:04,619 - Guided MOE - INFO - ------------------------------
+2025-01-08 17:12:04,620 - Guided MOE - INFO -   dataset_name: cifar10
+2025-01-08 17:12:04,620 - Guided MOE - INFO -   data_dir: data
+2025-01-08 17:12:04,620 - Guided MOE - INFO -   output_dir: outputs
+2025-01-08 17:12:04,620 - Guided MOE - INFO -   device: cuda
+2025-01-08 17:12:04,621 - Guided MOE - INFO -   seed: 42
+2025-01-08 17:12:04,622 - Guided MOE - INFO - 
+==================================================
