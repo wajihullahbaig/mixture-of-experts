@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 from moe.interfaces.moe_interface import MoEInterface
 from moe.models.gates_2d import BasicGating2D, GuidedGating2D
-from moe.models.experts_resnet import ResNet18Expert
+from moe.models.experts_resnet_2d import ResNet18Expert2D
 
 class ResNetMoE2D(MoEInterface):
     """Mixture of Experts implementation using ResNet18 experts for 2D inputs"""
@@ -34,7 +34,7 @@ class ResNetMoE2D(MoEInterface):
         
         # Initialize ResNet18 experts
         self.experts = nn.ModuleList([
-            ResNet18Expert(input_channels, num_classes, dropout_rate)
+            ResNet18Expert2D(input_channels, num_classes, dropout_rate)
             for _ in range(num_experts)
         ])
         

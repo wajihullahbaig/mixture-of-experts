@@ -32,7 +32,7 @@ class BasicBlock(nn.Module):
         out = torch.relu(out)
         return out
 
-class ResNet18Expert(ExpertInterface):
+class ResNet18Expert2D(ExpertInterface):
     """ResNet18-based expert network implementation"""
     
     def __init__(self, input_channels: int, num_classes: int, dropout_rate: float = 0.3):
