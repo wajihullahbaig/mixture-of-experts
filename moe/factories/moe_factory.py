@@ -9,6 +9,7 @@ from moe.models.base_moe_1d import BasicMoE1D
 from moe.models.base_moe_2d import BasicMoE2D
 from moe.models.guided_moe_1d import GuidedMoE1D
 from moe.models.guided_moe_2d import GuidedMoE2D
+from moe.models.resnet_moe_2d import ResNetMoE2D
 
 
 
@@ -19,7 +20,9 @@ class MoEFactory:
         (MoEType.BASIC, ArchitectureType.ARCH_1D): BasicMoE1D,
         (MoEType.BASIC, ArchitectureType.ARCH_2D): BasicMoE2D,
         (MoEType.GUIDED, ArchitectureType.ARCH_1D): GuidedMoE1D,
-        (MoEType.GUIDED, ArchitectureType.ARCH_2D): GuidedMoE2D
+        (MoEType.GUIDED, ArchitectureType.ARCH_2D): GuidedMoE2D,
+        (MoEType.BASIC, ArchitectureType.ARCH_RESNET18_2D): ResNetMoE2D,
+        (MoEType.GUIDED, ArchitectureType.ARCH_RESNET18_2D): ResNetMoE2D
     }
     
     @classmethod
@@ -88,7 +91,7 @@ class MoEFactory:
                     num_experts=config.num_experts,
                     expert_label_assignments=config.expert_label_map
                 )
-        else:  # 2D architecture
+        elif config.architecture == ArchitectureType.ARCH_2D:  # 2D architecture
             if config.moe_type == MoEType.BASIC:
                 return moe_class(
                     input_channels=config.input_size[0],
@@ -102,44 +105,27 @@ class MoEFactory:
                     num_experts=config.num_experts,
                     expert_label_assignments=config.expert_label_map
                 )
+        elif config.architecture == ArchitectureType.ARCH_RESNET18_2D:  # 2D architecture
+            if config.moe_type == MoEType.BASIC:
+                return moe_class(
+                    input_channels=config.input_size[0],
+                    num_classes=config.output_size,
+                    num_experts=config.num_experts,
+                    expert_label_assignments=None # We dont use label guided MoE
+                )
+            else:  # Guided
+                return moe_class(
+                    input_channels=config.input_size[0],
+                    num_classes=config.output_size,
+                    num_experts=config.num_experts,
+                    expert_label_assignments=config.expert_label_map,
+                    use_guided_gating = True
+                )     
+        else:
+            raise ValueError(f"Unsupported architecture type: {config.architecture}")       
+
     
     @classmethod
     def list_registered_models(cls) -> Dict[Tuple[MoEType, ArchitectureType], Type[MoEInterface]]:
         """Get dictionary of all registered MoE implementations"""
         return cls._moe_registry.copy()
-
-# Example usage:
-def create_model_example():
-    # Create configuration for a basic 1D MoE
-    config_1d = MoEConfig(
-        moe_type=MoEType.BASIC,
-        architecture=ArchitectureType.ARCH_1D,
-        num_experts=5,
-        input_size=784,  # MNIST flattened
-        hidden_size=256,
-        output_size=10
-    )
-    
-    # Create 1D model
-    model_1d = MoEFactory.create_moe(config_1d)
-    
-    # Create configuration for a guided 2D MoE
-    config_2d = MoEConfig(
-        moe_type=MoEType.GUIDED,
-        architecture=ArchitectureType.ARCH_2D,
-        num_experts=5,
-        input_size=(3, 32, 32),  # CIFAR
-        output_size=10,
-        expert_label_map={  # Example label assignments
-            0: [0, 1],
-            1: [2, 3],
-            2: [4, 5],
-            3: [6, 7],
-            4: [8, 9]
-        }
-    )
-    
-    # Create 2D model
-    model_2d = MoEFactory.create_moe(config_2d)
-    
-    return model_1d, model_2d

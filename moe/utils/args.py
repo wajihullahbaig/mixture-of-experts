@@ -5,21 +5,10 @@ from dataclasses import dataclass
 
 from moe.factories.datasets_factory import DatasetFactory
 from moe.configs.default_config import ArchitectureType, ExperimentConfig, MoEConfig, MoEType, TrainingConfig
+from moe.utils.model_utils import create_expert_assignments
 
 
-def create_expert_assignments(num_classes: int, num_experts: int) -> Dict[int, List[int]]:
-    """Create balanced label assignments for experts"""
-    assignments = {}
-    labels_per_expert = num_classes // num_experts
-    remaining = num_classes % num_experts
-    
-    start_idx = 0
-    for expert_idx in range(num_experts):
-        num_labels = labels_per_expert + (1 if expert_idx < remaining else 0)
-        assignments[expert_idx] = list(range(start_idx, start_idx + num_labels))
-        start_idx += num_labels
-    
-    return assignments
+
 
 def parse_args() -> ExperimentConfig:
     """Parse command line arguments and create configurations"""
@@ -29,8 +18,8 @@ def parse_args() -> ExperimentConfig:
     parser.add_argument('--moe-type', type=str, default='guided',
                       choices=['basic', 'guided'],
                       help='Type of MoE model')
-    parser.add_argument('--architecture', type=str, default='2d',
-                      choices=['1d', '2d'],
+    parser.add_argument('--architecture', type=str, default='resnet18',
+                      choices=['1d', '2d', 'resent18'],
                       help='Network architecture type')
     parser.add_argument('--num-experts', type=int, default=5,
                       help='Number of experts')
@@ -78,9 +67,14 @@ def parse_args() -> ExperimentConfig:
     dataset_config = DatasetFactory.get_dataset_config(args.dataset, args.architecture)
     
     # Create MoE configuration
+    
     moe_config = MoEConfig(
         moe_type=MoEType.BASIC if args.moe_type == 'basic' else MoEType.GUIDED,
-        architecture=ArchitectureType.ARCH_1D if args.architecture == '1d' else ArchitectureType.ARCH_2D,
+        architecture = ArchitectureType.ARCH_RESNET18_2D if args.architecture == 'resnet18' else 
+        (
+            ArchitectureType.ARCH_1D if args.architecture == '1d' else ArchitectureType.ARCH_2D
+        )
+        ,
         num_experts=args.num_experts,
         input_size=dataset_config["input_size"],
         hidden_size=args.hidden_size,

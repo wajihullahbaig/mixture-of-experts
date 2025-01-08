@@ -6,6 +6,7 @@ from typing import Dict
 from tqdm import tqdm
 
 from moe.factories.moe_factory import MoEFactory
+from moe.models.resnet_moe_2d import ResNetMoE2D
 from utils.args import parse_args, print_config
 from utils.seeding import set_seed
 from utils.tracking import ExpertTracker
@@ -35,7 +36,7 @@ def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Opt
         optimizer.zero_grad()
         
         # Forward pass
-        if isinstance(model, (GuidedMoE1D, GuidedMoE2D)):
+        if isinstance(model, (GuidedMoE1D, GuidedMoE2D, ResNetMoE2D)):
             outputs, expert_weights, expert_l2_losses = model(inputs, targets)
         else:
             outputs, expert_weights, expert_l2_losses = model(inputs)
