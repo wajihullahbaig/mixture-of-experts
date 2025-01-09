@@ -4,21 +4,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from moe.interfaces.moe_interface import MoEInterface
-from moe.models.gates_2d import BasicGating2D, GuidedGating2D
-from moe.models.experts_resnet_2d import ResNet18Expert2D
+from moe.models.experts.experts_resnet_2d import ResNet18Expert2D
+from moe.models.gates.gates_2d import GuidedGating2D
 
-class ResNetMoE2D(MoEInterface):
-    """Mixture of Experts implementation using ResNet18 experts for 2D inputs"""
+class GuidedResNetMoE2D(MoEInterface):
+    """Guided Mixture of Experts implementation using ResNet18 experts for 2D inputs"""
     
     def __init__(self, 
                  input_channels: int, 
                  num_classes: int, 
                  num_experts: int,
-                 expert_label_assignments: Optional[Dict[int, List[int]]] = None,
-                 dropout_rate: float = 0.3,
-                 use_guided_gating: bool = True):
+                 expert_label_assignments: Dict[int, List[int]],
+                 dropout_rate: float = 0.3):
         """
-        Initialize ResNet18-based MoE model
+        Initialize guided ResNet18-based MoE model
         
         Args:
             input_channels: Number of input channels (e.g. 3 for RGB)
@@ -26,7 +25,6 @@ class ResNetMoE2D(MoEInterface):
             num_experts: Number of ResNet18 experts
             expert_label_assignments: Dictionary mapping expert indices to lists of class labels
             dropout_rate: Dropout rate for regularization
-            use_guided_gating: Whether to use guided gating mechanism
         """
         super().__init__()
         self._num_experts = num_experts
@@ -38,17 +36,14 @@ class ResNetMoE2D(MoEInterface):
             for _ in range(num_experts)
         ])
         
-        # Initialize appropriate gating network
-        if use_guided_gating and expert_label_assignments:
-            self.gating_network = GuidedGating2D(
-                input_channels,
-                num_experts,
-                expert_label_assignments
-            )
-        else:
-            self.gating_network = BasicGating2D(input_channels, num_experts)
+        # Initialize guided gating network
+        self.gating_network = GuidedGating2D(
+            input_channels,
+            num_experts,
+            expert_label_assignments
+        )
         
-        # Storage for loss components and metrics
+        # Storage for metrics
         self.loss_components = {}
         self.metrics = {}
     
@@ -70,7 +65,7 @@ class ResNetMoE2D(MoEInterface):
             - Expert weights tensor
             - List of expert L2 losses
         """
-        # Get expert weights using label guidance during training if available
+        # Get expert weights using label guidance during training
         expert_weights = self.gating_network(x, labels)
         
         # Get expert outputs
@@ -98,7 +93,7 @@ class ResNetMoE2D(MoEInterface):
     def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor, 
                     expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor]) -> torch.Tensor:
         """
-        Compute the total loss for training
+        Compute the total loss for training with guided expert assignment
         
         Args:
             final_output: Combined output from all experts
@@ -112,21 +107,20 @@ class ResNetMoE2D(MoEInterface):
         # Classification loss
         ce_loss = F.cross_entropy(final_output, target)
         
-        # Expert assignment loss if using guided gating
-        expert_assignment_loss = 0.0
-        if self.expert_label_assignments:
-            label_expert_map = torch.zeros(
-                max(max(self.expert_label_assignments.values())) + 1, 
-                self.num_experts, 
-                device=target.device
-            )
-            for expert_idx, assigned_labels in self.expert_label_assignments.items():
-                label_expert_map[torch.tensor(assigned_labels, device=target.device), expert_idx] = 1
-            
-            target_assignments = label_expert_map[target]
-            expert_assignment_loss = F.binary_cross_entropy(
-                expert_weights, target_assignments
-            )
+        # Expert assignment loss based on label assignments
+        label_expert_map = torch.zeros(
+            max(max(self.expert_label_assignments.values())) + 1,
+            self.num_experts,
+            device=target.device
+        )
+        
+        for expert_idx, assigned_labels in self.expert_label_assignments.items():
+            label_expert_map[torch.tensor(assigned_labels, device=target.device), expert_idx] = 1
+        
+        target_assignments = label_expert_map[target]
+        expert_assignment_loss = F.binary_cross_entropy(
+            expert_weights, target_assignments
+        )
         
         # Expert diversity loss (entropy)
         diversity_loss = -torch.mean(
@@ -142,52 +136,28 @@ class ResNetMoE2D(MoEInterface):
             reduction='batchmean'
         )
         
-        # Combine L2 losses with optional masking
-        if self.expert_label_assignments:
-            # If using guided gating, mask L2 losses based on expert assignments
-            masked_l2_losses = []
-            label_expert_map = torch.zeros(
-                max(max(self.expert_label_assignments.values())) + 1, 
-                self.num_experts, 
-                device=target.device
-            )
-            for expert_idx, assigned_labels in self.expert_label_assignments.items():
-                label_expert_map[torch.tensor(assigned_labels, device=target.device), expert_idx] = 1
-            
-            target_assignments = label_expert_map[target]
-            
-            for i, l2_loss in enumerate(expert_l2_losses):
-                expert_mask = target_assignments[:, i]
-                masked_l2_loss = l2_loss * expert_mask.mean()
-                masked_l2_losses.append(masked_l2_loss)
-            
-            total_l2_loss = torch.stack(masked_l2_losses).sum()
-        else:
-            # Otherwise use all L2 losses
-            total_l2_loss = torch.stack(expert_l2_losses).sum()
+        # Combine L2 losses with expert assignment masking
+        masked_l2_losses = []
+        for i, l2_loss in enumerate(expert_l2_losses):
+            expert_mask = target_assignments[:, i]
+            masked_l2_loss = l2_loss * expert_mask.mean()
+            masked_l2_losses.append(masked_l2_loss)
         
-        # Combine all losses with appropriate weights
-        if self.expert_label_assignments:
-            total_loss = (
-                0.3 * ce_loss +
-                0.3 * expert_assignment_loss +
-                0.1 * diversity_loss +
-                0.2 * balance_loss +
-                0.1 * total_l2_loss
-            )
-        else:
-            total_loss = (
-                0.6 * ce_loss +
-                0.1 * diversity_loss +
-                0.2 * balance_loss +
-                0.1 * total_l2_loss
-            )
+        total_l2_loss = torch.stack(masked_l2_losses).sum()
+        
+        # Combine all losses with weights
+        total_loss = (
+            0.4 * ce_loss +
+            0.4 * expert_assignment_loss +
+            0.1 * diversity_loss +
+            0.05 * balance_loss +
+            0.05 * total_l2_loss
+        )
         
         # Store components for monitoring
         self.loss_components = {
             'ce_loss': ce_loss.item(),
-            'expert_assignment_loss': expert_assignment_loss if isinstance(expert_assignment_loss, float) 
-                                    else expert_assignment_loss.item(),
+            'expert_assignment_loss': expert_assignment_loss.item(),
             'diversity_loss': diversity_loss.item(),
             'balance_loss': balance_loss.item(),
             'l2_loss': total_l2_loss.item(),

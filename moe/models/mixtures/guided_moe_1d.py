@@ -3,8 +3,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from moe.interfaces.moe_interface import MoEInterface
-from moe.models.experts_1d import Expert1D
-from moe.models.gates_1d import GuidedGating1D
+from moe.models.experts.experts_1d import Expert1D
+from moe.models.gates.gates_1d import GuidedGating1D
+
 
 class GuidedMoE1D(MoEInterface):
     """Guided Mixture of Experts implementation for 1D inputs"""

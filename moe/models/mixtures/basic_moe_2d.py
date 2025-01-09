@@ -1,21 +1,20 @@
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 import torch
-from torch import nn as nn
+from torch import nn
 
 from moe.interfaces.moe_interface import MoEInterface
-from moe.models.experts_2d import Expert2D
-from moe.models.gates_2d import GuidedGating2D
-from moe.models.guided_moe_1d import GuidedMoE1D
+from moe.models.experts.experts_2d import Expert2D
+from moe.models.gates.gates_2d import BasicGating2D
+from moe.models.mixtures.basic_moe_1d import BasicMoE1D
 
 
-class GuidedMoE2D(MoEInterface):
-    """Guided Mixture of Experts implementation for 2D inputs"""
+
+class BasicMoE2D(MoEInterface):
+    """Basic Mixture of Experts implementation for 2D inputs"""
     
-    def __init__(self, input_channels: int, num_classes: int, num_experts: int,
-                 expert_label_assignments: Dict[int, List[int]]):
+    def __init__(self, input_channels: int, num_classes: int, num_experts: int):
         super().__init__()
         self._num_experts = num_experts
-        self.expert_label_assignments = expert_label_assignments
         
         # Initialize experts
         self.experts = nn.ModuleList([
@@ -23,12 +22,8 @@ class GuidedMoE2D(MoEInterface):
             for _ in range(num_experts)
         ])
         
-        # Initialize guided gating network
-        self.gating_network = GuidedGating2D(
-            input_channels,
-            num_experts,
-            expert_label_assignments
-        )
+        # Initialize gating network
+        self.gating_network = BasicGating2D(input_channels, num_experts)
         
         # Store loss components
         self.loss_components = {}
@@ -38,8 +33,8 @@ class GuidedMoE2D(MoEInterface):
         return self._num_experts
     
     def forward(self, x: torch.Tensor, labels: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
-        # Get expert weights using label guidance during training
-        expert_weights = self.gating_network(x, labels)
+        # Get expert weights
+        expert_weights = self.gating_network(x)
         
         # Get expert outputs
         expert_outputs = []
@@ -60,5 +55,6 @@ class GuidedMoE2D(MoEInterface):
     
     def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor, 
                     expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor]) -> torch.Tensor:
-        # Use same loss computation as 1D guided version
-        return GuidedMoE1D.compute_loss(self, final_output, target, expert_weights, expert_l2_losses)
+        # Use same loss computation as 1D
+        return BasicMoE1D.compute_loss(self, final_output, target, expert_weights, expert_l2_losses)
+

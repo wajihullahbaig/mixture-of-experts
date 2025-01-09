@@ -6,14 +6,14 @@ from typing import Dict
 from tqdm import tqdm
 
 from moe.factories.moe_factory import MoEFactory
-from moe.models.resnet_moe_2d import ResNetMoE2D
+from moe.models.mixtures.basic_resnet_moe_2d import BasicResNetMoE2D
+from moe.models.mixtures.guided_moe_1d import GuidedMoE1D
+from moe.models.mixtures.guided_moe_2d import GuidedMoE2D
 from utils.args import parse_args, print_config
 from utils.seeding import set_seed
 from utils.tracking import ExpertTracker
 from moe.factories.datasets_factory import DatasetFactory
 from data_handlers.data_utils import DataProcessor
-from models.guided_moe_1d import GuidedMoE1D
-from models.guided_moe_2d import GuidedMoE2D
 from utils.model_utils import create_expert_assignments
 from utils.app_logger import AppLogger
 
@@ -36,8 +36,8 @@ def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Opt
         
         optimizer.zero_grad()
         
-        # Forward pass
-        if isinstance(model, (GuidedMoE1D, GuidedMoE2D, ResNetMoE2D)):
+        # Forward pass - Guided versions need guidance from labels during training.
+        if isinstance(model, (GuidedMoE1D, GuidedMoE2D, BasicResNetMoE2D, GuidedMoE2D)):
             outputs, expert_weights, expert_l2_losses = model(inputs, targets)
         else:
             outputs, expert_weights, expert_l2_losses = model(inputs)
