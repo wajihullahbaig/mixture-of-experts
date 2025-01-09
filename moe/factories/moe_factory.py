@@ -7,12 +7,9 @@ from moe.configs.default_config import ArchitectureType, MoEConfig, MoEType
 from moe.interfaces.moe_interface import MoEInterface
 from moe.models.mixtures.basic_moe_1d import BasicMoE1D
 from moe.models.mixtures.basic_moe_2d import BasicMoE2D
-from moe.models.mixtures.basic_resnet_moe_2d import BasicResNetMoE2D
-from moe.models.mixtures.basic_timm_moe_1d import BasicTimmMoE1D
 from moe.models.mixtures.guided_moe_1d import GuidedMoE1D
 from moe.models.mixtures.guided_moe_2d import GuidedMoE2D
-from moe.models.mixtures.guided_resnet_moe_2d import GuidedResNetMoE2D
-from moe.models.mixtures.guided_timm_moe_1d import GuidedTimmMoE1D
+from moe.models.mixtures.guided_timm_moe_2d import GuidedTimmMoE2D
 
 
 
@@ -25,10 +22,7 @@ class MoEFactory:
         (MoEType.BASIC, ArchitectureType.ARCH_2D): BasicMoE2D,
         (MoEType.GUIDED, ArchitectureType.ARCH_1D): GuidedMoE1D,
         (MoEType.GUIDED, ArchitectureType.ARCH_2D): GuidedMoE2D,
-        (MoEType.BASIC, ArchitectureType.ARCH_RESNET18_2D): BasicResNetMoE2D,
-        (MoEType.GUIDED, ArchitectureType.ARCH_RESNET18_2D): GuidedResNetMoE2D,
-        (MoEType.BASIC, ArchitectureType.ARCH_TIMM_1D): BasicTimmMoE1D,
-        (MoEType.GUIDED, ArchitectureType.ARCH_TIMM_1D): GuidedTimmMoE1D        
+        (MoEType.GUIDED, ArchitectureType.ARCH_TIMM_2D): GuidedTimmMoE2D        
     }
     
     @classmethod
@@ -125,17 +119,19 @@ class MoEFactory:
                     num_experts=config.num_experts,
                     expert_label_assignments=config.expert_label_map,                    
                 )     
-        elif config.architecture == ArchitectureType.ARCH_TIMM_1D:  
+        elif config.architecture == ArchitectureType.ARCH_TIMM_2D:  
             if config.moe_type == MoEType.BASIC:
                 return moe_class(
-                    input_size=config.input_size,
+                    model_name="efficientnet_b1",
+                    input_channels=config.input_size,
                     hidden_size=config.hidden_size,
                     output_size=config.output_size,
                     num_experts=config.num_experts
                 )
             else:  # Guided
                 return moe_class(
-                    input_size=config.input_size,
+                    model_name="efficientnet_b1",
+                    input_channels=config.input_size,
                     hidden_size=config.hidden_size,
                     output_size=config.output_size,
                     num_experts=config.num_experts,

@@ -18,8 +18,8 @@ def parse_args() -> ExperimentConfig:
     parser.add_argument('--moe-type', type=str, default='guided',
                       choices=['basic', 'guided'],
                       help='Type of MoE model')
-    parser.add_argument('--architecture', type=str, default='resnet18',
-                      choices=['1d', '2d', 'resent18'],
+    parser.add_argument('--architecture', type=str, default='timm',
+                      choices=['1d', '2d', 'resent18, timm'],
                       help='Network architecture type')
     parser.add_argument('--num-experts', type=int, default=5,
                       help='Number of experts')
@@ -67,14 +67,22 @@ def parse_args() -> ExperimentConfig:
     dataset_config = DatasetFactory.get_dataset_config(args.dataset, args.architecture)
     
     # Create MoE configuration
+    moe_type=MoEType.BASIC if args.moe_type == 'basic' else MoEType.GUIDED
+    architecture = None
+    if args.architecture == 'resnet18':
+        architecture = ArchitectureType.ARCH_RESNET18_2D
+    elif args.architecture == 'timm':
+        architecture = ArchitectureType.ARCH_TIMM_2D
+    elif args.architecture == '1d':
+        architecture = ArchitectureType.ARCH_1D
+    elif args.architecture == '2d':
+        architecture = ArchitectureType.ARCH_2D        
+    else:
+        raise ValueError(f"Unsupported architecture type: {args.architecture}")        
     
-    moe_config = MoEConfig(
-        moe_type=MoEType.BASIC if args.moe_type == 'basic' else MoEType.GUIDED,
-        architecture = ArchitectureType.ARCH_RESNET18_2D if args.architecture == 'resnet18' else 
-        (
-            ArchitectureType.ARCH_1D if args.architecture == '1d' else ArchitectureType.ARCH_2D
-        )
-        ,
+
+    moe_config = MoEConfig(moe_type=moe_type,
+        architecture=architecture,
         num_experts=args.num_experts,
         input_size=dataset_config["input_size"],
         hidden_size=args.hidden_size,

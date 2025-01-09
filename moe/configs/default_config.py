@@ -50,7 +50,7 @@ class ArchitectureType(Enum):
     ARCH_1D = auto()
     ARCH_2D = auto()
     ARCH_RESNET18_2D = auto()
-    ARCH_TIMM_1D = auto()
+    ARCH_TIMM_2D = auto()
 
 
 @dataclass
@@ -75,12 +75,12 @@ class MoEConfig:
             raise ValueError("2D architecture requires tuple input_size (channels, height, width)")        
         if self.architecture == ArchitectureType.ARCH_RESNET18_2D and not isinstance(self.input_size, tuple):
             raise ValueError("2D RESNET18 architecture requires tuple input_size (channels, height, width)")        
-        if self.architecture == ArchitectureType.ARCH_TIMM_1D and not isinstance(self.input_size, int):
-            raise ValueError("1D architecture requires integer input_size")
+        if self.architecture == ArchitectureType.ARCH_TIMM_2D and not isinstance(self.input_size, tuple):
+            raise ValueError("TIMM architecture requires tuple input_size (channels, height, width)")
         
-        # Check if hidden_size is provided for 1D
-        if (self.architecture == ArchitectureType.ARCH_1D or self.architecture == ArchitectureType.ARCH_TIMM_1D) and self.hidden_size is None:
-            raise ValueError("hidden_size is required for 1D architecture")
+        # Check if hidden_size is provided
+        if (self.architecture == ArchitectureType.ARCH_1D or self.architecture == ArchitectureType.ARCH_TIMM_2D) and self.hidden_size is None:
+            raise ValueError("hidden_size is required for 1D or TIMM architecture")
         
         # Check if output_size is provided
         if self.output_size is None:
