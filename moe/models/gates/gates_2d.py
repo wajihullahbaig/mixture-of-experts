@@ -33,7 +33,7 @@ class BasicGating2D(GatingInterface):
             nn.Linear(256, num_experts)
         )
         
-        self.temperature = nn.Parameter(torch.ones(1))
+        self.temperature = nn.Parameter(torch.ones(1)*1.2)
         self._init_weights()
     
     def _get_feature_size(self, input_channels: int) -> int:
@@ -113,7 +113,7 @@ class GuidedGating2D(GatingInterface):
         )
         
         # Separate temperatures for training and inference
-        self.train_temperature = nn.Parameter(torch.ones(1))
+        self.train_temperature = nn.Parameter(torch.ones(1)*1.2)
         self.register_buffer('eval_temperature', torch.ones(1) * 2.0)
         
         self._init_weights()

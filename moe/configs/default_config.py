@@ -113,4 +113,5 @@ class ExperimentConfig:
     data_dir: Path
     output_dir: Path
     device: str
-    seed: int    
+    seed: int 
+    nan_check: bool = False   

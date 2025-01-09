@@ -19,7 +19,7 @@ class BasicGating1D(GatingInterface):
             nn.Linear(hidden_size, num_experts)
         )
         
-        self.temperature = nn.Parameter(torch.ones(1))
+        self.temperature = nn.Parameter(torch.ones(1)*1.2)
         self._init_weights()
     
     def _init_weights(self):
@@ -59,7 +59,7 @@ class GuidedGating1D(GatingInterface):
         )
         
         # Separate temperatures for training and inference
-        self.train_temperature = nn.Parameter(torch.ones(1))
+        self.train_temperature = nn.Parameter(torch.ones(1)*1.2)
         self.register_buffer('eval_temperature', torch.ones(1) * 2.0)
         
         self._init_weights()

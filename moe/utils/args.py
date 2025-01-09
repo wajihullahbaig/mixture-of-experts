@@ -15,7 +15,7 @@ def parse_args() -> ExperimentConfig:
     parser = argparse.ArgumentParser(description='Mixture of Experts Training')
     
     # Model arguments
-    parser.add_argument('--moe-type', type=str, default='guided',
+    parser.add_argument('--moe-type', type=str, default='basic',
                       choices=['basic', 'guided'],
                       help='Type of MoE model')
     parser.add_argument('--architecture', type=str, default='timm',
@@ -60,6 +60,10 @@ def parse_args() -> ExperimentConfig:
                       help='Device to use')
     parser.add_argument('--output-dir', type=str, default='outputs',
                       help='Output directory')
+    
+    parser.add_argument('--nan-check', type=bool, default=True,
+                      help='Enable NaN checking')
+                      
     
     args = parser.parse_args()
     
@@ -114,7 +118,8 @@ def parse_args() -> ExperimentConfig:
         data_dir=Path(args.data_dir),
         output_dir=Path(args.output_dir),
         device=args.device,
-        seed=args.seed
+        seed=args.seed,
+        nan_check=args.nan_check
     )
     
     return config
@@ -146,4 +151,5 @@ def print_config(config: ExperimentConfig,logger) -> None:
     logger.info(f"  output_dir: {config.output_dir}")
     logger.info(f"  device: {config.device}")
     logger.info(f"  seed: {config.seed}")
+    logger.info(f"  nan_check: {config.nan_check}")
     logger.info("\n" + "=" * 50)

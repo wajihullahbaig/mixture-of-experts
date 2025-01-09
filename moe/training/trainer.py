@@ -4,9 +4,12 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from typing import Dict
 from tqdm import tqdm
+import sys
+
 from moe.models.mixtures.guided_moe_1d import GuidedMoE1D
 from moe.models.mixtures.guided_moe_2d import GuidedMoE2D
 from moe.models.mixtures.guided_timm_moe_2d import GuidedTimmMoE2D
+from moe.utils.model_utils import check_for_nans
 from utils.tracking import ExpertTracker
 from data_handlers.data_utils import DataProcessor
 from utils.app_logger import AppLogger
@@ -14,7 +17,7 @@ from utils.app_logger import AppLogger
 
 def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Optimizer,
                 data_processor: DataProcessor, device: str, tracker: ExpertTracker,
-                epoch: int) -> Dict:
+                epoch: int, nan_check:bool) -> Dict:
     """Train for one epoch"""
     model.train()
     total_loss = 0
@@ -37,6 +40,13 @@ def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Opt
         else:
             outputs, expert_weights, expert_l2_losses = model(inputs)
         
+        if nan_check:
+            nans_list = check_for_nans([outputs,expert_weights,expert_l2_losses])
+            if nans_list:
+                logger = AppLogger(__name__)            
+                logger.error(f"NaNs detected in tensors: {nans_list}")
+                raise ValueError("NaNs detected in tensors. Model has collapsed.")
+                
         # Compute loss
         loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses)
         
@@ -73,6 +83,13 @@ def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Opt
     all_labels = torch.cat(all_labels, dim=0)
     all_predictions = torch.cat(all_predictions, dim=0)
     
+    if nan_check:
+        nans_list = check_for_nans([all_expert_weights,all_labels,all_predictions])
+        if nans_list:
+            logger = AppLogger(__name__)            
+            logger.error(f"NaNs detected in tensors: {nans_list}")
+            logger.error("Exiting training loop.")
+
     # Log confusion matrix
     tracker.log_confusion_matrix(all_labels, all_predictions, epoch, 'train')
     
@@ -86,7 +103,7 @@ def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Opt
 
 @torch.no_grad()
 def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProcessor,
-            device: str, tracker: ExpertTracker, epoch: int) -> Dict:
+            device: str, tracker: ExpertTracker, epoch: int, nan_check:bool) -> Dict:
     """Evaluate model"""
     model.eval()
     total_loss = 0
@@ -106,6 +123,13 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
             outputs, expert_weights, expert_l2_losses = model(inputs)
         else:
             outputs, expert_weights, expert_l2_losses = model(inputs)
+
+        if nan_check:
+            nans_list = check_for_nans([outputs,expert_weights,expert_l2_losses])
+            if nans_list:
+                logger = AppLogger(__name__)            
+                logger.error(f"NaNs detected in tensors: {nans_list}")
+                raise ValueError("NaNs detected in tensors. Model has collapsed.")
         
         # Compute loss
         loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses)
@@ -138,6 +162,12 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
     all_labels = torch.cat(all_labels, dim=0)
     all_predictions = torch.cat(all_predictions, dim=0)
     
+    if nan_check:
+        nans_list = check_for_nans([all_expert_weights,all_labels,all_predictions])
+        if nans_list:
+            logger = AppLogger(__name__)            
+            logger.error(f"NaNs detected in tensors: {nans_list}")
+            raise ValueError("NaNs detected in tensors. Model has collapsed.")    
     # Log confusion matrix
     tracker.log_confusion_matrix(all_labels, all_predictions, epoch, 'val')
     
