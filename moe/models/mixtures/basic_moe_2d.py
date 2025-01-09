@@ -12,7 +12,7 @@ from moe.models.mixtures.basic_moe_1d import BasicMoE1D
 class BasicMoE2D(MoEInterface):
     """Basic Mixture of Experts implementation for 2D inputs"""
     
-    def __init__(self, input_channels: int, num_classes: int, num_experts: int):
+    def __init__(self, input_channels: Tuple[int,int,int], num_classes: int, num_experts: int):
         super().__init__()
         self._num_experts = num_experts
         

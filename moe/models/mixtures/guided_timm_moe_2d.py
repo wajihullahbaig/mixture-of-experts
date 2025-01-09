@@ -175,8 +175,8 @@ class GuidedTimmMoE2D(MoEInterface):
         
         # Combine all losses with weights
         total_loss = (
-            0.3 * ce_loss +
-            0.3 * expert_assignment_loss +
+            0.4 * ce_loss +
+            0.2 * expert_assignment_loss +
             0.1 * diversity_loss +
             0.2 * balance_loss +
             0.1 * total_l2_loss
@@ -202,13 +202,3 @@ class GuidedTimmMoE2D(MoEInterface):
         }
         return metrics
     
-    def get_config(self) -> Dict[str, Any]:
-        """Get model configuration for serialization"""
-        expert_config = self.experts[0].get_config()
-        return {
-            'model_name': expert_config['model_name'],
-            'input_size': expert_config['input_size'],
-            'num_experts': self.num_experts,
-            'expert_label_assignments': self.expert_label_assignments,
-            'feature_dim': self._feature_dim
-        }

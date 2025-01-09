@@ -9,7 +9,9 @@ from moe.models.mixtures.basic_moe_1d import BasicMoE1D
 from moe.models.mixtures.basic_moe_2d import BasicMoE2D
 from moe.models.mixtures.guided_moe_1d import GuidedMoE1D
 from moe.models.mixtures.guided_moe_2d import GuidedMoE2D
+from moe.models.mixtures.basic_timm_moe_2d import BasicTimmMoE2D
 from moe.models.mixtures.guided_timm_moe_2d import GuidedTimmMoE2D
+
 
 
 
@@ -22,6 +24,7 @@ class MoEFactory:
         (MoEType.BASIC, ArchitectureType.ARCH_2D): BasicMoE2D,
         (MoEType.GUIDED, ArchitectureType.ARCH_1D): GuidedMoE1D,
         (MoEType.GUIDED, ArchitectureType.ARCH_2D): GuidedMoE2D,
+        (MoEType.BASIC, ArchitectureType.ARCH_TIMM_2D): BasicTimmMoE2D,
         (MoEType.GUIDED, ArchitectureType.ARCH_TIMM_2D): GuidedTimmMoE2D        
     }
     

@@ -11,7 +11,7 @@ from moe.models.mixtures.guided_moe_1d import GuidedMoE1D
 class GuidedMoE2D(MoEInterface):
     """Guided Mixture of Experts implementation for 2D inputs"""
     
-    def __init__(self, input_channels: int, num_classes: int, num_experts: int,
+    def __init__(self, input_channels: Tuple[int,int,int], num_classes: int, num_experts: int,
                  expert_label_assignments: Dict[int, List[int]]):
         super().__init__()
         self._num_experts = num_experts
