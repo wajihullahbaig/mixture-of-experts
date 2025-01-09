@@ -1,7 +1,5 @@
 import argparse
 from pathlib import Path
-from typing import Dict, List
-from dataclasses import dataclass
 
 from moe.factories.datasets_factory import DatasetFactory
 from moe.configs.default_config import ArchitectureType, ExperimentConfig, MoEConfig, MoEType, TrainingConfig
@@ -21,6 +19,18 @@ def parse_args() -> ExperimentConfig:
     parser.add_argument('--architecture', type=str, default='timm',
                       choices=['1d', '2d', 'resent18, timm'],
                       help='Network architecture type')
+    parser.add_argument('--timm-model', type=str, default='resnet18',
+                      choices=[
+                          'resnet18',   
+                          'vgg11',   
+                          'inception_v3',     
+                          'densenet121',   
+                          'efficientnet_b0',
+                          'mobilenetv3_large_100',
+                          'convnext_tiny'
+                           ],
+                      help='TIMM models suppored')
+    
     parser.add_argument('--num-experts', type=int, default=5,
                       help='Number of experts')
     parser.add_argument('--hidden-size', type=int, default=256,
@@ -96,7 +106,8 @@ def parse_args() -> ExperimentConfig:
         expert_label_map=(
             create_expert_assignments(dataset_config["num_classes"], args.num_experts)
             if args.moe_type == 'guided' else None
-        )
+        ),
+        timm_model_name = args.timm_model if args.architecture == 'timm' else None
     )
     
     # Create training configuration

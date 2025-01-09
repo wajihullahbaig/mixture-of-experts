@@ -36,6 +36,7 @@ class GuidedTimmMoE2D(MoEInterface):
         super().__init__()
         self._num_experts = num_experts
         self.expert_label_assignments = expert_label_assignments
+        self.model_name = model_name
         try:
             # Initialize TIMM model for feature extraction with specific settings
             self.feature_extractor = timm.create_model(
@@ -44,7 +45,7 @@ class GuidedTimmMoE2D(MoEInterface):
                 num_classes=0,  # Remove classification head
                 in_chans=input_channels[0],  # Number of input channels
                 global_pool='avg',  # Use global average pooling
-                features_only=False  # Get the final features
+                features_only=True  # Get the final features
             )
             
             # Get feature dimension by checking model's last layer

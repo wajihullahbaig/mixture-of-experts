@@ -125,7 +125,7 @@ class MoEFactory:
         elif config.architecture == ArchitectureType.ARCH_TIMM_2D:  
             if config.moe_type == MoEType.BASIC:
                 return moe_class(
-                    model_name="efficientnet_b1",
+                    model_name=config.timm_model_name,
                     input_channels=config.input_size,
                     hidden_size=config.hidden_size,
                     output_size=config.output_size,
@@ -133,7 +133,7 @@ class MoEFactory:
                 )
             else:  # Guided
                 return moe_class(
-                    model_name="efficientnet_b1",
+                    model_name=config.timm_model_name,
                     input_channels=config.input_size,
                     hidden_size=config.hidden_size,
                     output_size=config.output_size,

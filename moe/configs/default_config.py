@@ -65,6 +65,7 @@ class MoEConfig:
     expert_label_map: Optional[Dict[int, list]] = None  # Required for guided MoE
     dropout_rate: float = 0.3
     l2_reg: float = 0.01
+    timm_model_name: Optional[str] = None  # Required for TIMM architecture
 
     def validate(self) -> None:
         """Validate configuration parameters"""
