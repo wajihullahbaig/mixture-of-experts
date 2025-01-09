@@ -59,8 +59,21 @@ class BasicTimmMoE2D(MoEInterface):
         return self._num_experts
     
     def forward(self, x: torch.Tensor, labels: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
-        # Extract features using TIMM model
-        x = self.feature_extractor(x)
+        """
+        Forward pass through the MoE model
+        
+        Args:
+            x: Input tensor of shape [batch_size, input_size]
+            labels: Optional tensor of labels for guided routing
+            
+        Returns:
+            Tuple containing:
+            - Final output tensor
+            - Expert weights tensor
+            - List of expert L2 losses
+        """
+        x = self.feature_extractor(x) # Get the TIMM features
+
         # Get expert weights
         expert_weights = self.gating_network(x)
         
@@ -86,3 +99,26 @@ class BasicTimmMoE2D(MoEInterface):
         # Use same loss computation as 1D
         return BasicMoE1D.compute_loss(self, final_output, target, expert_weights, expert_l2_losses)
 
+    def _determine_feature_dim(self, model) -> int:
+        """Helper method to determine feature dimension from model architecture"""
+        # Common feature dimension attributes in TIMM models
+        feature_attributes = ['num_features', 'feature_dim', 'num_channels', 'embed_dim']
+        
+        for attr in feature_attributes:
+            if hasattr(model, attr):
+                return getattr(model, attr)
+        
+        # If no attribute found, try to find the last conv/linear layer
+        last_layer = None
+        for module in model.modules():
+            if isinstance(module, (nn.Conv2d, nn.Linear)):
+                last_layer = module
+        
+        if last_layer is not None:
+            if isinstance(last_layer, nn.Conv2d):
+                return last_layer.out_channels
+            else:
+                return last_layer.out_features
+        
+        # Default fallback
+        raise ValueError(f"Could not determine feature dimension for model {self.model_name}")

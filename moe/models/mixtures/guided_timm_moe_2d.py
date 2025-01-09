@@ -45,7 +45,7 @@ class GuidedTimmMoE2D(MoEInterface):
                 num_classes=0,  # Remove classification head
                 in_chans=input_channels[0],  # Number of input channels
                 global_pool='avg',  # Use global average pooling
-                features_only=True  # Get the final features
+                features_only=False  # Get the final features
             )
             
             # Get feature dimension by checking model's last layer
@@ -94,6 +94,7 @@ class GuidedTimmMoE2D(MoEInterface):
             - List of expert L2 losses
         """
         x = self.feature_extractor(x) # Get the TIMM features
+        
         # Get expert weights using label guidance during training
         expert_weights = self.gating_network(x, labels)
         
@@ -202,4 +203,29 @@ class GuidedTimmMoE2D(MoEInterface):
             **self.metrics
         }
         return metrics
+    
+
+    def _determine_feature_dim(self, model) -> int:
+        """Helper method to determine feature dimension from model architecture"""
+        # Common feature dimension attributes in TIMM models
+        feature_attributes = ['num_features', 'feature_dim', 'num_channels', 'embed_dim']
+        
+        for attr in feature_attributes:
+            if hasattr(model, attr):
+                return getattr(model, attr)
+        
+        # If no attribute found, try to find the last conv/linear layer
+        last_layer = None
+        for module in model.modules():
+            if isinstance(module, (nn.Conv2d, nn.Linear)):
+                last_layer = module
+        
+        if last_layer is not None:
+            if isinstance(last_layer, nn.Conv2d):
+                return last_layer.out_channels
+            else:
+                return last_layer.out_features
+        
+        # Default fallback
+        raise ValueError(f"Could not determine feature dimension for model {self.model_name}")
     
