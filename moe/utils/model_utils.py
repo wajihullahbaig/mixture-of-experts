@@ -1,12 +1,5 @@
 
 from typing import Dict
-from moe.configs.default_config import Config
-from moe.factories.datasets_factory import DatasetFactory
-from moe.models.base_moe_1d import BasicMoE1D
-from moe.models.base_moe_2d import BasicMoE2D
-from moe.models.guided_moe_1d import GuidedMoE1D
-from moe.models.guided_moe_2d import GuidedMoE2D
-import torch.nn as nn
 
 def create_expert_assignments(num_classes: int, num_experts: int) -> Dict[int, list]:
     """Create balanced label assignments for experts"""
