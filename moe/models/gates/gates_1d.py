@@ -30,7 +30,18 @@ class BasicGating1D(GatingInterface):
     
     def forward(self, x: torch.Tensor, labels: Optional[torch.Tensor] = None) -> torch.Tensor:
         logits = self.network(x)
-        return F.softmax(logits / self.temperature, dim=-1)
+        
+        # Add numerical stability
+        # 1. Clamp temperature to avoid division by very small numbers
+        temp = torch.clamp(self.temperature, min=0.1)
+        
+        # 2. Apply log-space softmax for numerical stability
+        scaled_logits = logits / temp
+        
+        # 3. Subtract max for numerical stability
+        scaled_logits = scaled_logits - scaled_logits.max(dim=-1, keepdim=True)[0]
+        
+        return F.softmax(scaled_logits, dim=-1)
 
 
 class GuidedGating1D(GatingInterface):

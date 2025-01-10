@@ -13,13 +13,13 @@ def parse_args() -> ExperimentConfig:
     parser = argparse.ArgumentParser(description='Mixture of Experts Training')
     
     # Model arguments
-    parser.add_argument('--moe-type', type=str, default='basic',
+    parser.add_argument('--moe-type', type=str, default='guided',
                       choices=['basic', 'guided'],
                       help='Type of MoE model')
     parser.add_argument('--architecture', type=str, default='timm',
                       choices=['1d', '2d', 'resent18, timm'],
                       help='Network architecture type')
-    parser.add_argument('--timm-model', type=str, default='resnet18',
+    parser.add_argument('--timm-model', type=str, default='efficientnet_b0',
                       choices=[
                           'resnet18',   
                           'vgg11',   

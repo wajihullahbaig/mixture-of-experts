@@ -56,7 +56,19 @@ class BasicGating2D(GatingInterface):
     def forward(self, x: torch.Tensor, labels: Optional[torch.Tensor] = None) -> torch.Tensor:
         features = self.features(x)
         logits = self.gate(features)
-        return F.softmax(logits / self.temperature, dim=-1)
+        
+        # Add numerical stability
+        # 1. Clamp temperature to avoid division by very small numbers
+        temp = torch.clamp(self.temperature, min=0.1)
+        
+        # 2. Scale logits with temperature
+        scaled_logits = logits / temp
+        
+        # 3. Subtract max for numerical stability before softmax
+        scaled_logits = scaled_logits - scaled_logits.max(dim=-1, keepdim=True)[0]
+        
+        # 4. Apply stable softmax
+        return F.softmax(scaled_logits, dim=-1)
 
 class GuidedGating2D(GatingInterface):
     """Guided gating network for 2D inputs with label-based routing"""
