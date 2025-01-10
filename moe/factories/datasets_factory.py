@@ -1,6 +1,7 @@
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from typing import Tuple, Optional, Union
+from torch.utils.data import random_split
 
 from moe.configs.default_config import ArchitectureType
 
@@ -37,10 +38,11 @@ class DatasetFactory:
             
         return configs[dataset]
     
+    
     @staticmethod
     def create_dataloaders(dataset: str, data_dir: str, batch_size: int,
-                          num_workers: int, architecture: str) -> tuple:
-        """Create train and test dataloaders"""
+                        num_workers: int, architecture: str, subset_fraction: float = 1.0) -> tuple:
+        """Create train and test dataloaders with optional subset"""
         config = DatasetFactory.get_dataset_config(dataset, architecture)
         transform = transforms.Compose(config['transforms'])
         
@@ -52,12 +54,20 @@ class DatasetFactory:
             test_dataset = datasets.CIFAR10(data_dir, train=False, download=True, transform=transform)
         elif dataset == 'cifar100':
             train_dataset = datasets.CIFAR100(data_dir, train=True, download=True, transform=transform)
-            test_dataset = datasets.CIFAR100(data_dir, train=False, download=True, transform=transform)            
+            test_dataset = datasets.CIFAR100(data_dir, train=False, download=True, transform=transform)
+        
+        if subset_fraction < 1.0:
+            train_subset_size = int(len(train_dataset) * subset_fraction)
+            test_subset_size = int(len(test_dataset) * subset_fraction)
             
+            train_dataset, _ = random_split(train_dataset, [train_subset_size, len(train_dataset) - train_subset_size])
+            test_dataset, _ = random_split(test_dataset, [test_subset_size, len(test_dataset) - test_subset_size])
+        
         train_loader = DataLoader(train_dataset, batch_size=batch_size, 
                                 shuffle=True, num_workers=num_workers)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, 
-                               shuffle=False, num_workers=num_workers)
+                                shuffle=False, num_workers=num_workers)
         
         return train_loader, test_loader
+
     
