@@ -8,15 +8,18 @@ from moe.interfaces.gates_interface import GatingInterface
 class BasicGating1D(GatingInterface):
     """Basic gating network for 1D inputs"""
     
-    def __init__(self, input_size: int, num_experts: int, hidden_size: int):
+    def __init__(self, input_size: int, num_experts: int, hidden_size: int,dropout_rate=0.3):
         super().__init__()
-        self.network = nn.Sequential(
-            nn.BatchNorm1d(input_size),
+        self.network  = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
             nn.BatchNorm1d(hidden_size),
-            nn.Dropout(0.3),
-            nn.Linear(hidden_size, num_experts)
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.ReLU(),
+            nn.BatchNorm1d(hidden_size // 2),
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_size // 2, num_experts)
         )
         
         self.temperature = nn.Parameter(torch.ones(1)*1.2)
@@ -48,7 +51,7 @@ class GuidedGating1D(GatingInterface):
     """Guided gating network for 1D inputs with label-based routing"""
     
     def __init__(self, input_size: int, num_experts: int, hidden_size: int, 
-                 expert_label_map: Dict[int, List[int]]):
+                 expert_label_map: Dict[int, List[int]],dropout_rate = 0.3):
         super().__init__()
         self.expert_label_map = expert_label_map
         self.num_experts = num_experts
@@ -60,14 +63,18 @@ class GuidedGating1D(GatingInterface):
             for expert_idx, labels in expert_label_map.items()
         }
         
-        self.network = nn.Sequential(
-            nn.BatchNorm1d(input_size),
+        self.network  = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
             nn.BatchNorm1d(hidden_size),
-            nn.Dropout(0.3),
-            nn.Linear(hidden_size, num_experts)
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.ReLU(),
+            nn.BatchNorm1d(hidden_size // 2),
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_size // 2, num_experts)
         )
+        
         
 
         self.temperature = nn.Parameter(torch.ones(1)*2.0)

@@ -8,28 +8,46 @@ from moe.interfaces.gates_interface import GatingInterface
 class BasicGating2D(GatingInterface):
     """Basic gating network for 2D inputs"""
     
-    def __init__(self, input_channels: int, num_experts: int):
+    def __init__(self, input_channels: int, num_experts: int, dropout_rate: float = 0.3):
         super().__init__()
         
         self.features = nn.Sequential(
-            nn.Conv2d(input_channels, 32, 3, padding=1),
+            # First conv block with larger kernel
+            nn.Conv2d(input_channels, 32, 5, padding=2),
             nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.MaxPool2d(2),
+            nn.Dropout2d(dropout_rate),
             
+            # Second conv block
             nn.Conv2d(32, 64, 3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool2d(2)
+            nn.MaxPool2d(2),
+            nn.Dropout2d(dropout_rate),
+            
+            # Third conv block
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Dropout2d(dropout_rate),
         )
         
+        # Calculate feature size
         self.feature_size = self._get_feature_size(input_channels)
         
+        # Gating network
         self.gate = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(self.feature_size, 256),
+            nn.Linear(self.feature_size, 512),
+            nn.LayerNorm(512),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(dropout_rate),
+            nn.Linear(512, 256),
+            nn.LayerNorm(256),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
             nn.Linear(256, num_experts)
         )
         
@@ -38,19 +56,19 @@ class BasicGating2D(GatingInterface):
     
     def _get_feature_size(self, input_channels: int) -> int:
         if input_channels == 1:  # MNIST
-            return 64 * 7 * 7
+            return 128 * 3 * 3
         else:  # CIFAR
-            return 64 * 8 * 8
+            return 128 * 4 * 4
     
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d):
+            elif isinstance(m, (nn.BatchNorm2d, nn.LayerNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
+                nn.init.xavier_normal_(m.weight, gain=0.5)
                 nn.init.constant_(m.bias, 0)
     
     def forward(self, x: torch.Tensor, labels: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -58,23 +76,18 @@ class BasicGating2D(GatingInterface):
         logits = self.gate(features)
         
         # Add numerical stability
-        # 1. Clamp temperature to avoid division by very small numbers
         temp = torch.clamp(self.temperature, min=0.1)
-        
-        # 2. Scale logits with temperature
         scaled_logits = logits / temp
-        
-        # 3. Subtract max for numerical stability before softmax
         scaled_logits = scaled_logits - scaled_logits.max(dim=-1, keepdim=True)[0]
         
-        # 4. Apply stable softmax
         return F.softmax(scaled_logits, dim=-1)
+
 
 class GuidedGating2D(GatingInterface):
     """Guided gating network for 2D inputs with label-based routing"""
     
     def __init__(self, input_channels: int, num_experts: int, 
-                 expert_label_map: Dict[int, List[int]]):
+                 expert_label_map: Dict[int, List[int]], dropout_rate: float = 0.3):
         super().__init__()
         self.expert_label_map = expert_label_map
         self.num_experts = num_experts
@@ -86,48 +99,48 @@ class GuidedGating2D(GatingInterface):
             for expert_idx, labels in expert_label_map.items()
         }
         
-        # Feature extraction using CNN
+        # Feature extraction - same as BasicGating2D
         self.features = nn.Sequential(
             # First conv block with larger kernel
             nn.Conv2d(input_channels, 32, 5, padding=2),
             nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.MaxPool2d(2),
+            nn.Dropout2d(dropout_rate),
             
             # Second conv block
             nn.Conv2d(32, 64, 3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(2),
+            nn.Dropout2d(dropout_rate),
             
-            # Third conv block for better feature extraction
+            # Third conv block
             nn.Conv2d(64, 128, 3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.MaxPool2d(2),
+            nn.Dropout2d(dropout_rate),
         )
         
         # Calculate feature size
         self.feature_size = self._get_feature_size(input_channels)
         
-        # Gating network with improved capacity
+        # Gating network - same as BasicGating2D
         self.gate = nn.Sequential(
             nn.Flatten(),
             nn.Linear(self.feature_size, 512),
             nn.LayerNorm(512),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(dropout_rate),
             nn.Linear(512, 256),
             nn.LayerNorm(256),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(dropout_rate),
             nn.Linear(256, num_experts)
         )
         
-
         self.temperature = nn.Parameter(torch.ones(1)*2.0)
-        
-        
         self._init_weights()
     
     def _get_feature_size(self, input_channels: int) -> int:
@@ -165,16 +178,12 @@ class GuidedGating2D(GatingInterface):
             expert_prob = self.base_probs[expert_idx]
             label_expert_map[torch.tensor(assigned_labels, device=device), expert_idx] = expert_prob
         
-        # Compute expert assignments with proper scaling
         expert_assignments = label_expert_map[labels]
         soft_mask = torch.where(expert_assignments > 0, 
                               expert_assignments,
                               soft_mask)
         
-        # Normalize to ensure probabilities sum to 1
-        soft_mask = F.normalize(soft_mask, p=1, dim=1)
-        
-        return soft_mask
+        return F.normalize(soft_mask, p=1, dim=1)
     
     def forward(self, x: torch.Tensor, labels: Optional[torch.Tensor] = None) -> torch.Tensor:
         features = self.features(x)
@@ -195,10 +204,6 @@ class GuidedGating2D(GatingInterface):
             # Dynamic mixing factor based on training progress
             mixing_factor = torch.sigmoid(self.temperature)
             final_weights = mixing_factor * routing_weights + (1 - mixing_factor) * soft_masks
-            
-            # Store entropy for monitoring
-            entropy = -(final_weights * torch.log(final_weights + 1e-6)).sum(dim=-1).mean()
-            self.last_entropy = entropy.item()
             
             return final_weights
         
