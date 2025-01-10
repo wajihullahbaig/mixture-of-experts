@@ -124,9 +124,9 @@ class GuidedGating2D(GatingInterface):
             nn.Linear(256, num_experts)
         )
         
-        # Separate temperatures for training and inference
-        self.train_temperature = nn.Parameter(torch.ones(1)*1.2)
-        self.register_buffer('eval_temperature', torch.ones(1) * 2.0)
+
+        self.temperature = nn.Parameter(torch.ones(1)*2.0)
+        
         
         self._init_weights()
     
@@ -190,10 +190,10 @@ class GuidedGating2D(GatingInterface):
             soft_masks = self.compute_soft_masks(labels)
             
             # Combine network output with soft guidance
-            routing_weights = F.softmax(logits / self.train_temperature, dim=1)
+            routing_weights = F.softmax(logits / self.temperature, dim=1)
             
             # Dynamic mixing factor based on training progress
-            mixing_factor = torch.sigmoid(self.train_temperature)
+            mixing_factor = torch.sigmoid(self.temperature)
             final_weights = mixing_factor * routing_weights + (1 - mixing_factor) * soft_masks
             
             # Store entropy for monitoring
@@ -202,5 +202,4 @@ class GuidedGating2D(GatingInterface):
             
             return final_weights
         
-        # During inference, use fixed temperature
-        return F.softmax(logits / self.eval_temperature, dim=-1)
+        return F.softmax(logits / self.temperature, dim=-1)
