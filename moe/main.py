@@ -30,7 +30,8 @@ def main():
         data_dir=config.data_dir,
         batch_size=config.training_config.batch_size,
         num_workers=config.training_config.num_workers,
-        architecture=config.moe_config.architecture
+        architecture=config.moe_config.architecture,
+        subset_fraction=0.1
     )   
         # Create model using factory
         model = MoEFactory.create_moe(config.moe_config).to(device)
@@ -67,7 +68,6 @@ def main():
             train_metrics = train_epoch(
                 model, train_loader, optimizer, data_processor, device, tracker, epoch, config.nan_check
             )
-            
             # Evaluate
             val_metrics = evaluate(
                 model, val_loader, data_processor, device, tracker, epoch,config.nan_check

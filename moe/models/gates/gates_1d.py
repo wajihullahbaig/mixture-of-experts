@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Union
 
 from moe.interfaces.gates_interface import GatingInterface
 
+
 class BasicGating1D(GatingInterface):
     """Basic gating network for 1D inputs"""
     
@@ -88,33 +89,47 @@ class GuidedGating1D(GatingInterface):
                 nn.init.constant_(m.bias, 0)
     
     def compute_soft_masks(self, labels: torch.Tensor) -> torch.Tensor:
-        """Compute soft assignment masks with proper probability scaling"""
+        """Improved soft assignment masks with better probability scaling"""
         batch_size = labels.size(0)
         device = labels.device
         
-        # Create assignment matrix with scaled background probabilities
+        # Create base probability distribution
         base_probs = torch.tensor([self.base_probs[i] for i in range(self.num_experts)], 
                                 device=device)
         soft_mask = base_probs.unsqueeze(0).expand(batch_size, -1)
         
-        # Create label-to-expert mapping tensor
+        # Create smoothed label-to-expert mapping
         label_expert_map = torch.zeros(max(max(self.expert_label_map.values())) + 1, 
-                                     self.num_experts, device=device)
+                                    self.num_experts, device=device)
         
+        # Add label smoothing
+        smoothing_factor = 0.1
+        smoothed_value = smoothing_factor / self.num_experts
+        label_expert_map.fill_(smoothed_value)
+        
+        # Assign expert probabilities with smoothing
         for expert_idx, assigned_labels in self.expert_label_map.items():
-            expert_prob = self.base_probs[expert_idx]
+            expert_prob = self.base_probs[expert_idx] * (1 - smoothing_factor)
             label_expert_map[torch.tensor(assigned_labels, device=device), expert_idx] = expert_prob
         
-        # Compute expert assignments with proper scaling
+        # Compute expert assignments with neighborhood consideration
         expert_assignments = label_expert_map[labels]
-        soft_mask = torch.where(expert_assignments > 0, 
-                              expert_assignments,
-                              soft_mask)
         
-        # Normalize to ensure probabilities sum to 1
-        soft_mask = F.normalize(soft_mask, p=1, dim=1)
+        # Add locality-based smoothing
+        kernel_size = 3
+        smoothing_kernel = torch.ones(1, 1, kernel_size, device=device) / kernel_size
+        smoothed_assignments = F.conv1d(
+            expert_assignments.unsqueeze(1),
+            smoothing_kernel,
+            padding=kernel_size//2
+        ).squeeze(1)
         
-        return soft_mask
+        # Combine with original assignments
+        soft_mask = torch.where(smoothed_assignments > 0, 
+                            smoothed_assignments,
+                            soft_mask)
+        
+        return F.normalize(soft_mask, p=1, dim=1)
     
     def forward(self, x: torch.Tensor, labels: Optional[torch.Tensor] = None) -> torch.Tensor:
         logits = self.network(x)

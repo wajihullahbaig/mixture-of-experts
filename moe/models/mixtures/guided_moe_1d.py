@@ -5,14 +5,19 @@ from torch.nn import functional as F
 from moe.interfaces.moe_interface import MoEInterface
 from moe.models.experts.experts_1d import Expert1D
 from moe.models.gates.gates_1d import GuidedGating1D
+import numpy as np
 
+from moe.models.mixtures.base_moe import BaseMoE
 
-class GuidedMoE1D(MoEInterface):
+class GuidedMoE1D(BaseMoE, MoEInterface):
     """Guided Mixture of Experts implementation for 1D inputs"""
     
     def __init__(self, input_size: int, hidden_size: int, output_size: int, num_experts: int,
                  expert_label_assignments: Dict[int, List[int]]):
-        super().__init__()
+        # Initialize both parent classes
+        BaseMoE.__init__(self)
+        nn.Module.__init__(self)
+        
         self._num_experts = num_experts
         self.expert_label_assignments = expert_label_assignments
         
@@ -56,66 +61,40 @@ class GuidedMoE1D(MoEInterface):
         # Combine expert outputs
         final_output = torch.sum(expert_outputs * expert_weights.unsqueeze(-1), dim=1)
         
-        return final_output, expert_weights, expert_l2_losses
+        return final_output, expert_weights,expert_outputs, expert_l2_losses
     
-    def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor, 
-                    expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor]) -> torch.Tensor:
-        
-        # Get target assignments for each input in batch
-        label_expert_map = torch.zeros(max(max(self.expert_label_assignments.values())) + 1, 
-                                    self.num_experts, device=target.device)
-        for expert_idx, assigned_labels in self.expert_label_assignments.items():
-            label_expert_map[torch.tensor(assigned_labels, device=target.device), expert_idx] = 1
-        
-        # Get expert assignments for current batch
-        target_assignments = label_expert_map[target]
-        
-        # Classification loss
+    def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor,
+                    expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor],
+                    expert_outputs: List[torch.Tensor], temperature: float) -> torch.Tensor:
+        # Primary losses
         ce_loss = F.cross_entropy(final_output, target)
+        l2_loss = torch.stack(expert_l2_losses).sum()
         
-        # Expert assignment loss
-        expert_assignment_loss = F.binary_cross_entropy(expert_weights, target_assignments)
+        # Additional losses using BaseMoE utilities
+        balance_loss = self.compute_load_balance_loss(expert_weights)
+        conf_penalty = self.compute_confidence_penalty(expert_weights, temperature)
+        entropy_reg = self.compute_entropy_regularization(expert_weights)
+        contr_loss = self.compute_expert_contrastive_loss(expert_outputs, expert_weights)
         
-        # Expert diversity loss (entropy)
-        diversity_loss = -torch.mean(
-            torch.sum(expert_weights * torch.log(expert_weights + 1e-6), dim=1)
-        )
+        # Combine all losses
+        losses = [ce_loss, l2_loss, balance_loss, conf_penalty, entropy_reg, contr_loss]
+        weights = [0.4, 0.1, 0.2, 0.1, 0.1, 0.1]
         
-        # Load balancing loss
-        usage_per_expert = expert_weights.mean(0)
-        target_usage = torch.ones_like(usage_per_expert) / self.num_experts
-        balance_loss = F.kl_div(
-            usage_per_expert.log(),
-            target_usage,
-            reduction='batchmean'
-        )
+        total_loss, normalized_losses, _ = self.normalize_and_weight_losses(*losses, weights=weights)
         
-        # Combine L2 losses with masking
-        masked_l2_losses = []
-        for i, l2_loss in enumerate(expert_l2_losses):
-            expert_mask = target_assignments[:, i]
-            masked_l2_loss = l2_loss * expert_mask.mean()
-            masked_l2_losses.append(masked_l2_loss)
-        
-        total_l2_loss = torch.stack(masked_l2_losses).sum()
-        
-        # Combine all losses with weights
-        total_loss = (
-            0.3 * ce_loss +
-            0.4 * expert_assignment_loss +
-            0.1 * diversity_loss +
-            0.1 * balance_loss +
-            0.1 * total_l2_loss
-        )
-        
-        # Store components for monitoring
+        # Store components
         self.loss_components = {
-            'ce_loss': ce_loss.item(),
-            'expert_assignment_loss': expert_assignment_loss.item(),
-            'diversity_loss': diversity_loss.item(),
-            'balance_loss': balance_loss.item(),
-            'l2_loss': total_l2_loss.item(),
+            'ce_loss': normalized_losses[0].item(),
+            'l2_loss': normalized_losses[1].item(),
+            'balance_loss': normalized_losses[2].item(),
+            'confidence_penalty': normalized_losses[3].item(),
+            'entropy_reg': normalized_losses[4].item(),
+            'contrastive_loss': normalized_losses[5].item(),
             'total_loss': total_loss.item()
         }
         
         return total_loss
+
+    
+    
+

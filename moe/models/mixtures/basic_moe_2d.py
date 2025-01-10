@@ -5,15 +5,18 @@ from torch import nn
 from moe.interfaces.moe_interface import MoEInterface
 from moe.models.experts.experts_2d import Expert2D
 from moe.models.gates.gates_2d import BasicGating2D
+from moe.models.mixtures.base_moe import BaseMoE
 from moe.models.mixtures.basic_moe_1d import BasicMoE1D
 
 
-
-class BasicMoE2D(MoEInterface):
+class BasicMoE2D(BaseMoE, MoEInterface):
     """Basic Mixture of Experts implementation for 2D inputs"""
     
     def __init__(self, input_channels: Tuple[int,int,int], num_classes: int, num_experts: int):
-        super().__init__()
+        # Initialize both parent classes
+        BaseMoE.__init__(self)
+        nn.Module.__init__(self)
+        
         self._num_experts = num_experts
         
         # Initialize experts
@@ -51,10 +54,11 @@ class BasicMoE2D(MoEInterface):
         # Combine expert outputs
         final_output = torch.sum(expert_outputs * expert_weights.unsqueeze(-1), dim=1)
         
-        return final_output, expert_weights, expert_l2_losses
+        return final_output, expert_weights,expert_outputs, expert_l2_losses
     
-    def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor, 
-                    expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor]) -> torch.Tensor:
+    def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor,
+                expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor], 
+                expert_outputs: List[torch.Tensor], temperature: float) -> torch.Tensor:
         # Use same loss computation as 1D
-        return BasicMoE1D.compute_loss(self, final_output, target, expert_weights, expert_l2_losses)
+        return BasicMoE1D.compute_loss(self, final_output, target, expert_weights, expert_l2_losses, expert_outputs, temperature)
 
