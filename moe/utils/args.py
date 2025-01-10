@@ -16,7 +16,7 @@ def parse_args() -> ExperimentConfig:
     parser.add_argument('--moe-type', type=str, default='guided',
                       choices=['basic', 'guided'],
                       help='Type of MoE model')
-    parser.add_argument('--architecture', type=str, default='2d',
+    parser.add_argument('--architecture', type=str, default='timm',
                       choices=['1d', '2d',  'timm'],
                       help='Network architecture type')
     parser.add_argument('--timm-model', type=str, default='efficientnet_b0',
@@ -37,7 +37,7 @@ def parse_args() -> ExperimentConfig:
                       help='Hidden layer size (for 1D architecture)')
     parser.add_argument('--dropout-rate', type=float, default=0.4,
                       help='Dropout rate')
-    parser.add_argument('--l2-reg', type=float, default=0.001,
+    parser.add_argument('--l2-reg', type=float, default=0.1,
                       help='L2 regularization strength')
     
     # Dataset arguments

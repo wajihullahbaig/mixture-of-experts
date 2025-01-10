@@ -119,10 +119,7 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
         inputs, targets = inputs.to(device), targets.to(device)
         
         # Forward pass
-        if isinstance(model, (GuidedMoE1D, GuidedMoE2D)):
-            outputs, expert_weights, expert_l2_losses = model(inputs)
-        else:
-            outputs, expert_weights, expert_l2_losses = model(inputs)
+        outputs, expert_weights, expert_l2_losses = model(inputs)
 
         if nan_check:
             nans_list = check_for_nans([outputs,expert_weights,expert_l2_losses])
