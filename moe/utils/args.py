@@ -33,11 +33,11 @@ def parse_args() -> ExperimentConfig:
     
     parser.add_argument('--num-experts', type=int, default=5,
                       help='Number of experts')
-    parser.add_argument('--hidden-size', type=int, default=256,
+    parser.add_argument('--hidden-size', type=int, default=64,
                       help='Hidden layer size (for 1D architecture)')
-    parser.add_argument('--dropout-rate', type=float, default=0.3,
+    parser.add_argument('--dropout-rate', type=float, default=0.4,
                       help='Dropout rate')
-    parser.add_argument('--l2-reg', type=float, default=0.01,
+    parser.add_argument('--l2-reg', type=float, default=0.001,
                       help='L2 regularization strength')
     
     # Dataset arguments

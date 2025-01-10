@@ -101,10 +101,10 @@ class GuidedMoE1D(MoEInterface):
         
         # Combine all losses with weights
         total_loss = (
-            0.3 * ce_loss +
-            0.3 * expert_assignment_loss +
+            0.4 * ce_loss +
+            0.1 * expert_assignment_loss +
             0.1 * diversity_loss +
-            0.2 * balance_loss +
+            0.3 * balance_loss +
             0.1 * total_l2_loss
         )
         
