@@ -45,7 +45,7 @@ def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Opt
             if nans_list:
                 logger = AppLogger(__name__)            
                 logger.error(f"NaNs detected in tensors: {nans_list}")
-                raise ValueError("NaNs detected in tensors. Model has collapsed.")
+                raise ValueError("NaNs detected in tensors.")
                 
         # Compute loss
         loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses)
@@ -88,7 +88,7 @@ def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Opt
         if nans_list:
             logger = AppLogger(__name__)            
             logger.error(f"NaNs detected in tensors: {nans_list}")
-            logger.error("Exiting training loop.")
+            raise ValueError("NaNs detected in tensors.")
 
     # Log confusion matrix
     tracker.log_confusion_matrix(all_labels, all_predictions, epoch, 'train')
@@ -129,7 +129,7 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
             if nans_list:
                 logger = AppLogger(__name__)            
                 logger.error(f"NaNs detected in tensors: {nans_list}")
-                raise ValueError("NaNs detected in tensors. Model has collapsed.")
+                raise ValueError("NaNs detected in tensors.")
         
         # Compute loss
         loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses)
@@ -167,7 +167,7 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
         if nans_list:
             logger = AppLogger(__name__)            
             logger.error(f"NaNs detected in tensors: {nans_list}")
-            raise ValueError("NaNs detected in tensors. Model has collapsed.")    
+            raise ValueError("NaNs detected in tensors.")    
     # Log confusion matrix
     tracker.log_confusion_matrix(all_labels, all_predictions, epoch, 'val')
     

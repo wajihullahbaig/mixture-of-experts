@@ -25,10 +25,6 @@ class DatasetFactory:
                 'input_channels': 3,
                 'num_classes': 10,
                 'transforms': [
-                    transforms.RandomCrop(32, padding=4),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ColorJitter(brightness=0.2, contrast=0.2),
-                    transforms.RandomRotation(15),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], 
                                         std=[0.2023, 0.1994, 0.2010])

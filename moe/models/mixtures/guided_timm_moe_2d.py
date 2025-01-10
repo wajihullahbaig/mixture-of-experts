@@ -177,11 +177,11 @@ class GuidedTimmMoE2D(MoEInterface):
         
         # Combine all losses with weights
         total_loss = (
-            0.4 * ce_loss +
-            0.2 * expert_assignment_loss +
+            0.5 * ce_loss +
+            0.1 * expert_assignment_loss +
             0.1 * diversity_loss +
-            0.2 * balance_loss +
-            0.1 * total_l2_loss
+            0.29 * balance_loss +
+            0.01 * total_l2_loss
         )
         
         # Store components for monitoring
