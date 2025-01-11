@@ -47,8 +47,8 @@ def robust_training(config, logger, device):
             epochs=config.training_config.num_epochs,
             steps_per_epoch=len(train_loader),
             pct_start=0.1,  # Warm-up period
-            div_factor=25,
-            final_div_factor=1e4
+            div_factor=10,
+            final_div_factor=1e3
         )
         
         # Create expert assignments for guided version
@@ -66,7 +66,8 @@ def robust_training(config, logger, device):
             base_path=config.output_dir,
             dataset_name=config.dataset_name,
             num_experts=config.moe_config.num_experts,
-            expert_label_assignments=expert_assignments
+            expert_label_assignments=expert_assignments,
+            training_mode=config.training_config.training_mode
         )
         
         # Create data processor

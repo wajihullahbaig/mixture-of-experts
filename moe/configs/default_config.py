@@ -29,6 +29,8 @@ class TrainingConfig:
     num_workers: int
     clip_grad_norm: float
     early_stopping_patience: int
+    training_mode: str = 'standard'   
+    n_splits: int = 5
 
 @dataclass
 class Config:    
@@ -116,5 +118,3 @@ class ExperimentConfig:
     device: str
     seed: int 
     nan_check: bool = False
-    training_mode: str = 'standard'   
-    n_splits: int = 5

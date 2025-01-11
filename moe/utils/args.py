@@ -50,9 +50,9 @@ def parse_args() -> ExperimentConfig:
     # Training arguments
     parser.add_argument('--num-epochs', type=int, default=100,
                       help='Number of epochs')
-    parser.add_argument('--batch-size', type=int, default=128,
+    parser.add_argument('--batch-size', type=int, default=1024,
                       help='Batch size')
-    parser.add_argument('--learning-rate', type=float, default=0.001,
+    parser.add_argument('--learning-rate', type=float, default=0.005,
                       help='Learning rate')
     parser.add_argument('--weight-decay', type=float, default=1e-5,
                       help='Weight decay')
@@ -122,7 +122,9 @@ def parse_args() -> ExperimentConfig:
         weight_decay=args.weight_decay,
         num_workers=args.num_workers,
         clip_grad_norm=args.clip_grad_norm,
-        early_stopping_patience=args.early_stopping_patience
+        early_stopping_patience=args.early_stopping_patience,
+        training_mode = args.training_mode,
+        n_splits = args.n_splits
     )
     
     # Create complete experiment configuration
@@ -134,9 +136,7 @@ def parse_args() -> ExperimentConfig:
         output_dir=Path(args.output_dir),
         device=args.device,
         seed=args.seed,
-        nan_check=args.nan_check,
-        training_mode = args.training_mode,
-        n_splits = args.n_splits
+        nan_check=args.nan_check      
     )
     
     return config

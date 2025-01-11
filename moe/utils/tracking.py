@@ -13,7 +13,7 @@ class ExpertTracker:
     """Track and visualize expert behavior and metrics"""
     
     def __init__(self, model_type: str, architecture: str, base_path: str,dataset_name:str,
-                 num_experts: int, expert_label_assignments: Optional[Dict[int, List[int]]] = None, fold_no:str = None):
+                 num_experts: int, expert_label_assignments: Optional[Dict[int, List[int]]] = None, fold_no:str = None,training_mode:str = None):
         """
         Initialize the tracker
         
@@ -33,9 +33,9 @@ class ExpertTracker:
         
         # Setup directory structure
         if fold_no is not None:
-            self.base_dir = os.path.join(base_path, f'{dataset_name}/{model_type}/{architecture}', self.timestamp,f'fold_{fold_no}')
+            self.base_dir = os.path.join(base_path, f'{dataset_name}/{model_type}/{architecture}/{training_mode}', self.timestamp,f'fold_{fold_no}')
         else:
-            self.base_dir = os.path.join(base_path, f'{dataset_name}/{model_type}/{architecture}', self.timestamp)
+            self.base_dir = os.path.join(base_path, f'{dataset_name}/{model_type}/{architecture}/{training_mode}', self.timestamp)
         self.plots_dir = os.path.join(self.base_dir, 'plots')
         self.data_dir = os.path.join(self.base_dir, 'data')
         self.model_dir = os.path.join(self.base_dir, 'models')

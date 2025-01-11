@@ -25,7 +25,7 @@ def main():
         logger.info(f"Using device: {device}")
         
         # Choose training mode based on config
-        if config.training_mode == 'kfold':
+        if config.training_config.training_mode == 'kfold':
             logger.info("Starting K-Fold Cross Validation Training")
             results = kfold.kfold_training(config, logger, device, n_splits=config.n_splits)
             
@@ -34,7 +34,7 @@ def main():
             logger.info(f"\nK-Fold Training Summary:")
             logger.info(f"Mean Accuracy: {np.mean(accuracies):.2f}% ± {np.std(accuracies):.2f}%")
             
-        elif config.training_mode == 'stratified':
+        elif config.training_config.training_mode == 'stratified':
             logger.info("Starting Stratified K-Fold Cross Validation Training")
             results = stratified.stratified_kfold_training(config, logger, device, n_splits=config.n_splits)
             
@@ -43,14 +43,14 @@ def main():
             logger.info(f"\nStratified K-Fold Training Summary:")
             logger.info(f"Mean Accuracy: {np.mean(accuracies):.2f}% ± {np.std(accuracies):.2f}%")
             
-        elif config.training_mode == 'standard':
+        elif config.training_config.training_mode == 'standard':
             logger.info("Starting Standard Train/Test Training")
             results = standard.train_test_training(config, logger, device)
             logger.info(f"\nTraining Summary:")
             logger.info(f"Best Validation Accuracy: {results['best_val_acc']:.2f}%")
             logger.info(f"Model saved at: {results['model_path']}")
         
-        elif config.training_mode == 'robust':
+        elif config.training_config.training_mode == 'robust':
             logger.info("Starting Robust Training")
             results = robust.robust_training(config, logger, device)
             logger.info(f"\nTraining Summary:")
