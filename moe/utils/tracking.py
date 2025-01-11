@@ -33,7 +33,7 @@ class ExpertTracker:
         
         # Setup directory structure
         if fold_no is not None:
-            self.base_dir = os.path.join(base_path, f'{dataset_name}/{model_type}/{architecture}/fold_{fold_no}', self.timestamp)
+            self.base_dir = os.path.join(base_path, f'{dataset_name}/{model_type}/{architecture}', self.timestamp,f'fold_{fold_no}')
         else:
             self.base_dir = os.path.join(base_path, f'{dataset_name}/{model_type}/{architecture}', self.timestamp)
         self.plots_dir = os.path.join(self.base_dir, 'plots')

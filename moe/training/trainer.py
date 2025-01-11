@@ -2,9 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from typing import Dict
+from typing import Dict, Optional
 from tqdm import tqdm
-import sys
 
 from moe.models.mixtures.guided_moe_1d import GuidedMoE1D
 from moe.models.mixtures.guided_moe_2d import GuidedMoE2D
@@ -15,9 +14,17 @@ from data_handlers.data_utils import DataProcessor
 from utils.app_logger import AppLogger
 
 
-def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Optimizer,
-                data_processor: DataProcessor, device: str, tracker: ExpertTracker,
-                epoch: int, nan_check:bool) -> Dict:
+def train_epoch(
+    model: nn.Module, 
+    train_loader: DataLoader, 
+    optimizer: optim.Optimizer,
+    data_processor: DataProcessor, 
+    device: str, 
+    tracker: ExpertTracker,
+    epoch: int, 
+    nan_check: bool,
+    scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
+) -> Dict:
     """Train for one epoch"""
     model.train()
     total_loss = 0
@@ -54,7 +61,8 @@ def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Opt
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
-        
+        if scheduler is not None:
+            scheduler.step()
         # Update metrics
         total_loss += loss.item()
         _, predicted = outputs.max(1)

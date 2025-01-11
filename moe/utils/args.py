@@ -48,7 +48,7 @@ def parse_args() -> ExperimentConfig:
                       help='Data directory')
     
     # Training arguments
-    parser.add_argument('--num-epochs', type=int, default=20,
+    parser.add_argument('--num-epochs', type=int, default=100,
                       help='Number of epochs')
     parser.add_argument('--batch-size', type=int, default=128,
                       help='Batch size')
@@ -74,8 +74,8 @@ def parse_args() -> ExperimentConfig:
     parser.add_argument('--nan-check', type=bool, default=True,
                       help='Enable NaN checking')
 
-    parser.add_argument('--training-mode', type=str, default='kfold',
-                      choices=['standard', 'kfold', 'stratified'],
+    parser.add_argument('--training-mode', type=str, default='robust',
+                      choices=['standard', 'kfold', 'stratified','robust'],
                       help='Training mode to use')
     parser.add_argument('--n-splits', type=int, default=5,
                       help='Number of folds for cross validation')

@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from moe.training import kfold, stratified, standard
+from moe.training import kfold, robust, stratified, standard
 from utils.args import parse_args, print_config
 from utils.seeding import set_seed
 from utils.tracking import ExpertTracker
@@ -43,9 +43,16 @@ def main():
             logger.info(f"\nStratified K-Fold Training Summary:")
             logger.info(f"Mean Accuracy: {np.mean(accuracies):.2f}% ± {np.std(accuracies):.2f}%")
             
-        else:  # standard train/test
+        elif config.training_mode == 'standard':
             logger.info("Starting Standard Train/Test Training")
             results = standard.train_test_training(config, logger, device)
+            logger.info(f"\nTraining Summary:")
+            logger.info(f"Best Validation Accuracy: {results['best_val_acc']:.2f}%")
+            logger.info(f"Model saved at: {results['model_path']}")
+        
+        elif config.training_mode == 'robust':
+            logger.info("Starting Robust Training")
+            results = robust.robust_training(config, logger, device)
             logger.info(f"\nTraining Summary:")
             logger.info(f"Best Validation Accuracy: {results['best_val_acc']:.2f}%")
             logger.info(f"Model saved at: {results['model_path']}")
