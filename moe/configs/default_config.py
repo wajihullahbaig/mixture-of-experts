@@ -115,4 +115,6 @@ class ExperimentConfig:
     output_dir: Path
     device: str
     seed: int 
-    nan_check: bool = False   
+    nan_check: bool = False
+    training_mode: str = 'standard'   
+    n_splits: int = 5

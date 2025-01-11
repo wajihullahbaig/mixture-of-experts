@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from typing import Tuple, Optional, Union
-from torch.utils.data import random_split
+from torch.utils.data import random_split, Dataset
 
 from moe.configs.default_config import ArchitectureType
 
@@ -38,6 +38,22 @@ class DatasetFactory:
             
         return configs[dataset]
     
+    @staticmethod
+    def create_dataset(dataset: str, data_dir: str, train: bool = True, 
+                      architecture: Optional[Union[ArchitectureType, str]] = None) -> Dataset:
+        """Create a dataset without DataLoader wrapping"""
+        config = DatasetFactory.get_dataset_config(dataset, architecture) if architecture else \
+                DatasetFactory.get_dataset_config(dataset, ArchitectureType.ARCH_2D)
+        transform = transforms.Compose(config['transforms'])
+        
+        if dataset == 'mnist':
+            return datasets.MNIST(data_dir, train=train, download=True, transform=transform)
+        elif dataset == 'cifar10':
+            return datasets.CIFAR10(data_dir, train=train, download=True, transform=transform)
+        elif dataset == 'cifar100':
+            return datasets.CIFAR100(data_dir, train=train, download=True, transform=transform)
+        else:
+            raise ValueError(f"Dataset {dataset} not supported")
     
     @staticmethod
     def create_dataloaders(dataset: str, data_dir: str, batch_size: int,
@@ -69,5 +85,3 @@ class DatasetFactory:
                                 shuffle=False, num_workers=num_workers)
         
         return train_loader, test_loader
-
-    
