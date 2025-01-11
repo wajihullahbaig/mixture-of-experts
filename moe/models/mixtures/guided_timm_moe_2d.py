@@ -7,10 +7,10 @@ import timm
 from moe.interfaces.moe_interface import MoEInterface
 from moe.models.experts.experts_1d import Expert1D
 from moe.models.gates.gates_1d import GuidedGating1D
-from moe.models.mixtures.base_moe import BaseMoE
+from moe.models.mixtures.moe_loss import MoELoss
 from moe.models.mixtures.guided_moe_1d import GuidedMoE1D
 
-class GuidedTimmMoE2D(BaseMoE,MoEInterface):
+class GuidedTimmMoE2D(MoELoss,MoEInterface):
     """Guided Mixture of Experts implementation using TIMM models for 1D inputs"""
     
     def __init__(self,
@@ -36,7 +36,7 @@ class GuidedTimmMoE2D(BaseMoE,MoEInterface):
             dropout_rate: Dropout rate for regularization
         """
         # Initialize both parent classes
-        BaseMoE.__init__(self)
+        MoELoss.__init__(self)
         nn.Module.__init__(self)
         
         self._num_experts = num_experts
@@ -123,13 +123,12 @@ class GuidedTimmMoE2D(BaseMoE,MoEInterface):
             entropy = -(expert_weights * torch.log(expert_weights + 1e-6)).sum(dim=-1).mean()
             self.metrics['routing_entropy'] = entropy.item()
         
-        return final_output, expert_weights,expert_outputs, expert_l2_losses
+        return final_output, expert_weights,expert_l2_losses
     
     def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor,
-                expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor], 
-                expert_outputs: List[torch.Tensor], temperature: float) -> torch.Tensor:
+                expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor]) -> torch.Tensor:
         # Use same loss computation as 1D guided version
-        return GuidedMoE1D.compute_loss(self, final_output, target, expert_weights, expert_l2_losses, expert_outputs, temperature)
+        return GuidedMoE1D.compute_loss(self, final_output, target, expert_weights, expert_l2_losses)
     
     def get_metrics(self) -> Dict[str, float]:
         """Get current metrics including loss components and routing entropy"""

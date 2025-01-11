@@ -31,7 +31,7 @@ def main():
         batch_size=config.training_config.batch_size,
         num_workers=config.training_config.num_workers,
         architecture=config.moe_config.architecture,
-        subset_fraction=0.1
+        subset_fraction=1.0
     )   
         # Create model using factory
         model = MoEFactory.create_moe(config.moe_config).to(device)

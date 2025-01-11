@@ -5,17 +5,17 @@ from torch import nn as nn
 from moe.interfaces.moe_interface import MoEInterface
 from moe.models.experts.experts_2d import Expert2D
 from moe.models.gates.gates_2d import GuidedGating2D
-from moe.models.mixtures.base_moe import BaseMoE
+from moe.models.mixtures.moe_loss import MoELoss
 from moe.models.mixtures.guided_moe_1d import GuidedMoE1D
 
 
-class GuidedMoE2D(BaseMoE,MoEInterface):
+class GuidedMoE2D(MoELoss,MoEInterface):
     """Guided Mixture of Experts implementation for 2D inputs"""
     
     def __init__(self, input_channels: Tuple[int,int,int], num_classes: int, num_experts: int,
                  expert_label_assignments: Dict[int, List[int]]):
         # Initialize both parent classes
-        BaseMoE.__init__(self)
+        MoELoss.__init__(self)
         nn.Module.__init__(self)
         
         self._num_experts = num_experts
@@ -41,6 +41,8 @@ class GuidedMoE2D(BaseMoE,MoEInterface):
     def num_experts(self) -> int:
         return self._num_experts
     
+
+
     def forward(self, x: torch.Tensor, labels: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
         # Get expert weights using label guidance during training
         expert_weights = self.gating_network(x, labels)
@@ -59,11 +61,10 @@ class GuidedMoE2D(BaseMoE,MoEInterface):
         
         # Combine expert outputs
         final_output = torch.sum(expert_outputs * expert_weights.unsqueeze(-1), dim=1)
-        
-        return final_output, expert_weights,expert_outputs, expert_l2_losses
+        return final_output, expert_weights,expert_l2_losses
     
     def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor,
-                expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor], 
-                expert_outputs: List[torch.Tensor], temperature: float) -> torch.Tensor:
+                expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor]) -> torch.Tensor:
         # Use same loss computation as 1D guided version
-        return GuidedMoE1D.compute_loss(self, final_output, target, expert_weights, expert_l2_losses, expert_outputs, temperature)
+        return GuidedMoE1D.compute_loss(self, final_output, target, expert_weights, expert_l2_losses)
+    

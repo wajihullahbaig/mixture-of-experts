@@ -34,19 +34,21 @@ def train_epoch(model: nn.Module, train_loader: DataLoader, optimizer: optim.Opt
         
         optimizer.zero_grad()
         
-        outputs, expert_weights, expert_outputs,expert_l2_losses = model(inputs, targets)
-
+        # Forward pass - Guided versions need guidance from labels during training.
+        if isinstance(model, (GuidedMoE1D, GuidedMoE2D,GuidedTimmMoE2D)):
+            outputs, expert_weights, expert_l2_losses = model(inputs, targets)
+        else:
+            outputs, expert_weights, expert_weights = model(inputs)
         
         if nan_check:
-            nans_list = check_for_nans([outputs,expert_weights,expert_outputs,expert_l2_losses])
+            nans_list = check_for_nans([outputs,expert_weights,expert_l2_losses])
             if nans_list:
                 logger = AppLogger(__name__)            
                 logger.error(f"NaNs detected in tensors: {nans_list}")
                 raise ValueError("NaNs detected in tensors.")
                 
         # Compute loss
-        temperature = model.gating_network.temperature.item()
-        loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses,expert_outputs,temperature)
+        loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses)
         
         # Backward pass
         loss.backward()
@@ -114,22 +116,23 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
     for batch_idx, (inputs, targets) in tqdm(enumerate(val_loader), total=len(val_loader), desc='Validation'):
         # Process batch according to architecture
         inputs, targets = data_processor.process_batch((inputs, targets))
-        inputs, targets = inputs.to(device), targets.to(device)
+        inputs, targets = inputs.to(device), targets.to(device)       
+
+        if isinstance(model, (GuidedMoE1D, GuidedMoE2D,GuidedTimmMoE2D)):
+            outputs, expert_weights, expert_l2_losses = model(inputs, targets)
+        else:
+            outputs, expert_weights, expert_weights = model(inputs)
         
-        # Forward pass
-        outputs, expert_weights, expert_outputs,expert_l2_losses = model(inputs)
 
         if nan_check:
-            nans_list = check_for_nans([outputs,expert_weights,expert_outputs,expert_l2_losses])
+            nans_list = check_for_nans([outputs,expert_weights,expert_l2_losses])
             if nans_list:
                 logger = AppLogger(__name__)            
                 logger.error(f"NaNs detected in tensors: {nans_list}")
                 raise ValueError("NaNs detected in tensors.")
         
         # Compute loss
-        temperature = model.gating_network.temperature.item()
-        loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses,expert_outputs,temperature)
-        
+        loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses)
         
         # Update metrics
         total_loss += loss.item()

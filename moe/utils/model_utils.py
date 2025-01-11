@@ -88,3 +88,4 @@ def check_for_nans(items: List[Any]) -> Dict[int, Dict[str, Any]]:
             }
     
     return nan_details
+

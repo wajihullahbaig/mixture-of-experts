@@ -140,7 +140,7 @@ class GuidedGating2D(GatingInterface):
             nn.Linear(256, num_experts)
         )
         
-        self.temperature = nn.Parameter(torch.ones(1)*2.0)
+        self.temperature = nn.Parameter(torch.ones(1)*5.0)
         self._init_weights()
     
     def _get_feature_size(self, input_channels: int) -> int:
@@ -191,7 +191,7 @@ class GuidedGating2D(GatingInterface):
         
         # Add small noise during training for exploration
         if self.training:
-            noise = torch.randn_like(logits) * 0.1
+            noise = torch.randn_like(logits) * 0.01
             logits = logits + noise
         
         if self.training and labels is not None:

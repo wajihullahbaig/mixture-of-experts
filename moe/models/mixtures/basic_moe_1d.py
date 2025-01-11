@@ -6,14 +6,14 @@ from typing import Dict, List, Optional, Tuple
 from moe.interfaces.moe_interface import MoEInterface
 from moe.models.experts.experts_1d import Expert1D
 from moe.models.gates.gates_1d import BasicGating1D
-from moe.models.mixtures.base_moe import BaseMoE
+from moe.models.mixtures.moe_loss import MoELoss
 
-class BasicMoE1D(BaseMoE, MoEInterface):
+class BasicMoE1D(MoELoss, MoEInterface):
     """Basic Mixture of Experts implementation for 1D inputs"""
     
     def __init__(self, input_size: int, hidden_size: int, output_size: int, num_experts: int):
         # Initialize both parent classes
-        BaseMoE.__init__(self)
+        MoELoss.__init__(self)
         nn.Module.__init__(self)
         
         self._num_experts = num_experts
@@ -50,24 +50,23 @@ class BasicMoE1D(BaseMoE, MoEInterface):
         # Combine expert outputs
         final_output = torch.sum(expert_outputs * expert_weights.unsqueeze(-1), dim=1)
         
-        return final_output, expert_weights, expert_l2_losses, expert_outputs
+        return final_output, expert_weights, expert_outputs
     
     def compute_loss(self, final_output: torch.Tensor, target: torch.Tensor,
                     expert_weights: torch.Tensor, expert_l2_losses: List[torch.Tensor],
-                    expert_outputs: List[torch.Tensor], temperature: float) -> torch.Tensor:
+                    ) -> torch.Tensor:
         # Primary losses
         ce_loss = F.cross_entropy(final_output, target)
+        # Combine L2 losses
         l2_loss = torch.stack(expert_l2_losses).sum()
         
         # Additional losses using BaseMoE utilities
         balance_loss = self.compute_load_balance_loss(expert_weights)
-        conf_penalty = self.compute_confidence_penalty(expert_weights, temperature)
-        entropy_reg = self.compute_entropy_regularization(expert_weights)
-        contr_loss = self.compute_expert_contrastive_loss(expert_outputs, expert_weights)
+        diversity_loss = self.compute_diversity_loss(expert_weights)        
         
         # Combine all losses
-        losses = [ce_loss, l2_loss, balance_loss, conf_penalty, entropy_reg, contr_loss]
-        weights = [0.4, 0.1, 0.2, 0.1, 0.1, 0.1]
+        losses = [ce_loss, l2_loss, balance_loss, diversity_loss]
+        weights = [0.4, 0.1, 0.1, 0.1, 0.3]
         
         total_loss, normalized_losses, _ = self.normalize_and_weight_losses(*losses, weights=weights)
         
@@ -76,10 +75,7 @@ class BasicMoE1D(BaseMoE, MoEInterface):
             'ce_loss': normalized_losses[0].item(),
             'l2_loss': normalized_losses[1].item(),
             'balance_loss': normalized_losses[2].item(),
-            'confidence_penalty': normalized_losses[3].item(),
-            'entropy_reg': normalized_losses[4].item(),
-            'contrastive_loss': normalized_losses[5].item(),
-            'total_loss': total_loss.item()
+            'diversity_loss': normalized_losses[3].item(),
         }
         
         return total_loss
