@@ -51,7 +51,6 @@ class ArchitectureType(Enum):
     """Types of architectures available"""
     ARCH_1D = auto()
     ARCH_2D = auto()
-    ARCH_RESNET18_2D = auto()
     ARCH_TIMM_2D = auto()
 
 
