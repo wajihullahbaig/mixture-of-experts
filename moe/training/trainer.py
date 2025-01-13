@@ -12,6 +12,7 @@ from moe.utils.model_utils import check_for_nans
 from utils.tracking import ExpertTracker
 from data_handlers.data_utils import DataProcessor
 from utils.app_logger import AppLogger
+from torch.nn import functional as F
 
 
 def train_epoch(
@@ -137,7 +138,7 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
                 raise ValueError("NaNs detected in tensors.")
         
         # Compute loss
-        loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses)
+        loss = loss = F.cross_entropy(outputs, targets)
         
         # Update metrics
         total_loss += loss.item()
