@@ -71,15 +71,21 @@ class BasicMoE1D(MoEInterface):
             reduction='batchmean'
         )
         
+        # Add auxiliary diversity term
+        entropy_per_example = -torch.sum(expert_weights * torch.log(expert_weights + 1e-6), dim=1)
+        min_entropy = torch.min(entropy_per_example)
+        auxiliary_diversity = -min_entropy
+
         # Combine L2 losses
         total_l2_loss = torch.stack(expert_l2_losses).sum()
         
         # Combine all losses with weights
         total_loss = (
-            0.6 * ce_loss + 
+            0.5 * ce_loss + 
             0.1 * diversity_loss +
-            0.2 * balance_loss +
-            0.1 * total_l2_loss
+            0.1 * balance_loss +
+            0.1 * total_l2_loss +
+            0.2 * auxiliary_diversity
         )
         
         # Store components for monitoring
