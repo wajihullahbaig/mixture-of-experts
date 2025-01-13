@@ -46,7 +46,7 @@ class Expert2D(ExpertInterface):
             nn.Linear(512, num_classes)
         )
         
-        self.l2_reg = 0.01
+        self.l2_reg = 0.0001
         self._init_weights()
     
     def _get_feature_size(self, input_channels: int) -> int:

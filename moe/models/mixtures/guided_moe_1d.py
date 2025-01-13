@@ -81,6 +81,11 @@ class GuidedMoE1D(MoEInterface):
             torch.sum(expert_weights * torch.log(expert_weights + 1e-6), dim=1)
         )
         
+        # Add auxiliary diversity term
+        entropy_per_example = -torch.sum(expert_weights * torch.log(expert_weights + 1e-6), dim=1)
+        min_entropy = torch.min(entropy_per_example)
+        auxiliary_diversity = -min_entropy
+
         # Load balancing loss
         usage_per_expert = expert_weights.mean(0)
         target_usage = torch.ones_like(usage_per_expert) / self.num_experts
@@ -102,10 +107,11 @@ class GuidedMoE1D(MoEInterface):
         # Combine all losses with weights
         total_loss = (
             0.3 * ce_loss +
-            0.4 * expert_assignment_loss +
+            0.1 * expert_assignment_loss +
             0.1 * diversity_loss +
             0.1 * balance_loss +
-            0.1 * total_l2_loss
+            0.1 * total_l2_loss+
+            0.3 * auxiliary_diversity
         )
         
         # Store components for monitoring

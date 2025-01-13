@@ -23,7 +23,7 @@ class Expert1D(ExpertInterface):
             nn.Linear(hidden_size // 2, output_size)
         )
         
-        self.l2_reg = 0.01
+        self.l2_reg = 0.0001
         self._init_weights()
     
     def _init_weights(self):
