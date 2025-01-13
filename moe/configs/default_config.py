@@ -75,8 +75,6 @@ class MoEConfig:
             raise ValueError("1D architecture requires integer input_size")
         if self.architecture == ArchitectureType.ARCH_2D and not isinstance(self.input_size, tuple):
             raise ValueError("2D architecture requires tuple input_size (channels, height, width)")        
-        if self.architecture == ArchitectureType.ARCH_RESNET18_2D and not isinstance(self.input_size, tuple):
-            raise ValueError("2D RESNET18 architecture requires tuple input_size (channels, height, width)")        
         if self.architecture == ArchitectureType.ARCH_TIMM_2D and not isinstance(self.input_size, tuple):
             raise ValueError("TIMM architecture requires tuple input_size (channels, height, width)")
         

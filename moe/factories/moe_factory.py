@@ -107,21 +107,7 @@ class MoEFactory:
                     num_classes=config.output_size,
                     num_experts=config.num_experts,
                     expert_label_assignments=config.expert_label_map
-                )
-        elif config.architecture == ArchitectureType.ARCH_RESNET18_2D:  # 2D architecture
-            if config.moe_type == MoEType.BASIC:
-                return moe_class(
-                    input_channels=config.input_size[0],
-                    num_classes=config.output_size,
-                    num_experts=config.num_experts                    
-                )
-            else:  # Guided
-                return moe_class(
-                    input_channels=config.input_size[0],
-                    num_classes=config.output_size,
-                    num_experts=config.num_experts,
-                    expert_label_assignments=config.expert_label_map,                    
-                )     
+                )   
         elif config.architecture == ArchitectureType.ARCH_TIMM_2D:  
             if config.moe_type == MoEType.BASIC:
                 return moe_class(
