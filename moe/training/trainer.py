@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from typing import Dict
 from tqdm import tqdm
-import sys
+import torch.nn.functional as F
 
 from moe.models.mixtures.guided_moe_1d import GuidedMoE1D
 from moe.models.mixtures.guided_moe_2d import GuidedMoE2D
@@ -132,7 +132,7 @@ def evaluate(model: nn.Module, val_loader: DataLoader, data_processor: DataProce
                 raise ValueError("NaNs detected in tensors.")
         
         # Compute loss
-        loss = model.compute_loss(outputs, targets, expert_weights, expert_l2_losses)
+        loss = loss = F.cross_entropy(outputs, targets)
         
         # Update metrics
         total_loss += loss.item()
